@@ -1,0 +1,71 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# General Dependencies
+# Ignore node_modules at the root and in any subdirectory (e.g., cmc-globe/node_modules)
+node_modules/
+.pnp
+.pnp.*
+
+# Yarn specific (from original)
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# PNPM lock file
+pnpm-lock.yaml
+
+# Log files
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+# Ignore local environment variables in root and subdirectories
+.env.local
+.env.*.local
+cmc-globe/.env.local
+cmc-globe/.env.*.local
+
+# Next.js project (inside cmc-globe/)
+cmc-globe/.next/
+cmc-globe/out/
+cmc-globe/build/ # If using 'next build' outputting to a 'build' dir, though .next is typical
+
+# TypeScript specific for Next.js project
+cmc-globe/next-env.d.ts
+cmc-globe/*.tsbuildinfo
+
+# Vercel deployment files (if cmc-globe is deployed with Vercel)
+cmc-globe/.vercel/
+
+# Downloaded databases or large data files
+agent/GeoLite2-Country.mmdb
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+._*
+
+# Miscellaneous
+*.pem
+*.swp
+
+# Coverage directory
+coverage/
+.nyc_output/
+
+# Compiled binary files (if any, e.g. from other tools in the project)
+*.exe
+*.dll
+*.so
+*.dylib

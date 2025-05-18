@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  /* Base styles, Tailwind will handle resets */
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* The project specifies a dark purple background for the UI shell,
+     this will be applied in UIFrame.js.
+     A general body background can be set here if needed,
+     but for now, let's keep it simple. */
+}
+
+/* Glassmorphism Panel Style */
+.glass-panel {
+  background: rgba(25, 20, 35, 0.35); /* Slightly adjusted alpha for better visibility */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); /* For Safari */
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px; /* Slightly larger radius */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+  color: rgba(255, 255, 255, 0.9);
+  /* Ensure padding is applied by components using this class, or add a default here if all panels need it */
+}
+
+/* Styling for scrollbars within glass panels for a more integrated look */
+.glass-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.glass-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.glass-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.glass-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
