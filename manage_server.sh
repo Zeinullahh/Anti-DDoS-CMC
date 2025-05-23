@@ -62,16 +62,23 @@ status_nginx() {
 # Function to start the Node.js application (development mode)
 start_app_dev() {
     echo "Starting Node.js application in development mode (cmc-globe)..."
-    echo "Application output will be logged to ${NODE_APP_LOG_FILE} and also shown here."
-    echo "To stop, press Ctrl+C."
+    echo "Application output will be logged to ${NODE_APP_LOG_FILE}."
+    echo "To stop this tail view, press Ctrl+C (the app will continue running in the background)."
     cd "${APP_PATH}" || { echo "Failed to cd into ${APP_PATH}"; exit 1; }
-    # Run in background and tee output to log file and stdout
-    # Using script to capture PID for a potential stop_app function later
-    nohup npm run dev > >(tee -a "../${NODE_APP_LOG_FILE}") 2>&1 &
+    
+    # Redirect nohup's stdout and stderr directly to the log file
+    nohup npm run dev > "../${NODE_APP_LOG_FILE}" 2>&1 &
+    
     echo $! > "../app.pid"
     cd ..
-    echo "App started in dev mode. PID: $(cat app.pid). Tailing combined log (Ctrl+C to stop tailing):"
-    tail -f "${NODE_APP_LOG_FILE}"
+    echo "App started in dev mode. PID: $(cat app.pid). Tailing log (Ctrl+C to stop tailing this view):"
+    # Ensure the log file exists before tailing, and give nohup a moment to create it
+    sleep 0.5 
+    if [ -f "${NODE_APP_LOG_FILE}" ]; then
+        tail -f "${NODE_APP_LOG_FILE}"
+    else
+        echo "Log file ${NODE_APP_LOG_FILE} not yet created. Check manually."
+    fi
 }
 
 # Function to start the Node.js application (production mode)

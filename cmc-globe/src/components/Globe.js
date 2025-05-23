@@ -30,6 +30,9 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
   const regionCentroidsMap = useRef({});
   const regionOverlayCounts = useRef({}); // Added: To store blacklist counts for regions
   const instancedDotsMeshRef = useRef(null); // Added: Ref to access instanced mesh
+  const globeSphereRef = useRef(null); // Ref for the globe sphere mesh
+  const activeArcsRef = useRef([]); // To keep track of active arc meshes
+  const sceneRef = useRef(null); // Ref for the scene
 
   // User-set camera Z position (as per last explicit user setting)
   const INITIAL_CAMERA_Z = 1.9;
@@ -37,6 +40,11 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
   useEffect(() => {
     // This effect hook sets up the Three.js scene, renderer, camera, objects, and animation loop.
     // It runs once after the component mounts.
+
+    // WebSocket connection URL
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.hostname}:4444`;
+    let websocket = null;
 
     if (!mountRef.current) {
       // Ensure the mount point is available before proceeding.
@@ -82,8 +90,10 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
       metalness: 0.8,  // Low metalness to reduce sharp specular highlights
       roughness: 0.8,  // High roughness for diffuse shading
     });
-    const globeSphere = new THREE.Mesh(globeGeometry, globeMaterial);
-    scene.add(globeSphere); // Add directly to scene
+    // const globeSphere = new THREE.Mesh(globeGeometry, globeMaterial);
+    globeSphereRef.current = new THREE.Mesh(globeGeometry, globeMaterial);
+    scene.add(globeSphereRef.current); // Add directly to scene
+    sceneRef.current = scene; // Store scene in ref
     
     // --- Lighting Setup ---
     // Ambient light: provides overall, non-directional illumination.
@@ -105,9 +115,9 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
     // Imagine the globe's local axes: +Y up, +X right, +Z towards camera (if no rotation).
     // Light from (-X, +Y, +Z) direction.
     attachedGradientLight.position.set(-2, 3, 1).normalize(); // Normalize for direction
-    globeSphere.add(attachedGradientLight); 
+    globeSphereRef.current.add(attachedGradientLight); 
     // By default, a directional light targets (0,0,0) in its parent's coordinate system.
-    // Since globeSphere is at world origin, this light will target the globe's center.
+    // Since globeSphereRef.current is at world origin, this light will target the globe's center.
 
     // --- Background Glow Sprite ---
     // (This is the glow BEHIND the globe)
@@ -147,9 +157,9 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
     const glowSprite = new THREE.Sprite(glowMaterial);
     const baseGlowScale = 3; // This is the scale relative to the globe's radius (1)
     glowSprite.scale.set(baseGlowScale, baseGlowScale, 1); 
-    // Position in local space of globeSphere, slightly behind its surface.
+    // Position in local space of globeSphereRef.current, slightly behind its surface.
     glowSprite.position.set(0, 0, -0.01); // z = -0.01 to be just behind globe surface
-    globeSphere.add(glowSprite); // Add glowSprite as a child of globeSphere
+    globeSphereRef.current.add(glowSprite); // Add glowSprite as a child of globeSphereRef.current
 
     // --- Instanced Hexagonal Dots ---
     // Define geometry for a single hexagonal dot (a flat cylinder).
@@ -267,7 +277,7 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
         // For initial setup, it's part of the geometry.
         // instancedDotsMeshRef.current.geometry.getAttribute('color').needsUpdate = true; // This is done when colors change.
         
-        globeSphere.add(instancedDotsMeshRef.current); // Add dots as a child of globeSphere
+        globeSphereRef.current.add(instancedDotsMeshRef.current); // Add dots as a child of globeSphereRef.current
         
         // --- Region Assignment and Centroid Calculation ---
         if (Object.keys(dotIdMap.current).length > 0) {
@@ -339,9 +349,10 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
 
       // Adjust rotation speed as needed
       const rotationSpeed = 0.005; 
-      globeSphere.rotation.y += deltaMove.x * rotationSpeed;
-      globeSphere.rotation.x += deltaMove.y * rotationSpeed;
-
+      if (globeSphereRef.current) {
+        globeSphereRef.current.rotation.y += deltaMove.x * rotationSpeed;
+        globeSphereRef.current.rotation.x += deltaMove.y * rotationSpeed;
+      }
       previousMousePosition = {
         x: event.clientX,
         y: event.clientY
@@ -375,11 +386,128 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
 
     // --- Animation Loop ---
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate); 
+      animationFrameId = requestAnimationFrame(animate);
       
-      renderer.render(scene, camera); 
+      // Animate arcs (e.g., fade out, or move a particle along them) - Placeholder for future
+      // For now, arcs are removed by timeout in drawTrafficArc
+
+      renderer.render(scene, camera);
     };
     animate();
+
+    // --- ARC DRAWING FUNCTIONALITY ---
+    const drawTrafficArc = (sourceCountryCode) => {
+      if (!globeSphereRef.current || !sceneRef.current || Object.keys(regionCentroidsMap.current).length === 0) {
+        console.warn("Globe not ready for drawing arcs yet.");
+        return;
+      }
+
+      const sourceRegionName = countryToRegion[sourceCountryCode];
+      const targetRegionName = "NorthAmerica"; // Target is always North America
+
+      if (!sourceRegionName || sourceRegionName === "Undefined") {
+        console.warn(`Source region for country code ${sourceCountryCode} not found or is Undefined. Cannot draw arc.`);
+        return;
+      }
+      if (sourceRegionName === targetRegionName) {
+        // console.log(`Source region ${sourceRegionName} is the same as target. Skipping arc.`);
+        return; // Don't draw arc if source is already North America
+      }
+
+      const sourceCentroidData = regionCentroidsMap.current[sourceRegionName];
+      const targetCentroidData = regionCentroidsMap.current[targetRegionName];
+
+      if (!sourceCentroidData) {
+        console.warn(`Centroid for source region ${sourceRegionName} not found.`);
+        return;
+      }
+      if (!targetCentroidData) {
+        console.warn(`Centroid for target region ${targetRegionName} (NorthAmerica) not found.`);
+        return;
+      }
+
+      const startPoint = new THREE.Vector3(sourceCentroidData.x, sourceCentroidData.y, sourceCentroidData.z);
+      const endPoint = new THREE.Vector3(targetCentroidData.x, targetCentroidData.y, targetCentroidData.z);
+
+      // Calculate control point for the arc
+      const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+      const distance = startPoint.distanceTo(endPoint);
+      // Offset control point radially from globe center
+      // The height of the arc can be proportional to the distance
+      const arcHeight = distance * 0.3 + 0.1; // Adjust 0.3 for more/less curve, 0.1 min height
+      midPoint.normalize().multiplyScalar(1 + arcHeight); // 1 is globe radius
+
+      const curve = new THREE.QuadraticBezierCurve3(startPoint, midPoint, endPoint);
+      
+      const points = curve.getPoints(50); // Get 50 points along the curve
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      
+      // Simple line material for the arc
+      const material = new THREE.LineBasicMaterial({ 
+        color: 0xff00ff, // Bright magenta color for arcs
+        linewidth: 1, // Note: linewidth > 1 may not work on all platforms/drivers with WebGLRenderer
+        transparent: true,
+        opacity: 0.8
+      }); 
+      
+      const arcLine = new THREE.Line(geometry, material);
+      globeSphereRef.current.add(arcLine); // Add arc to the globe sphere so it rotates with it
+      activeArcsRef.current.push(arcLine);
+
+      // Remove arc after a delay
+      setTimeout(() => {
+        if (globeSphereRef.current) {
+            globeSphereRef.current.remove(arcLine);
+        }
+        geometry.dispose();
+        material.dispose();
+        activeArcsRef.current = activeArcsRef.current.filter(arc => arc !== arcLine);
+      }, 5000); // Arc visible for 5 seconds
+    };
+
+
+    // --- WEBSOCKET CLIENT SETUP ---
+    const connectWebSocket = () => {
+      console.log('Globe.js: Attempting to connect to WebSocket:', wsUrl);
+      websocket = new WebSocket(wsUrl);
+
+      websocket.onopen = () => {
+        console.log('Globe.js: WebSocket connection established.');
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+          const messageData = JSON.parse(event.data.toString());
+          // console.log('Globe.js: Received WebSocket message:', messageData);
+
+          if (messageData.type === 'trafficUpdate' && messageData.payload) {
+            // console.log('Globe.js: Received trafficUpdate:', messageData.payload);
+            messageData.payload.forEach(item => {
+              if (item.countryCode) {
+                drawTrafficArc(item.countryCode);
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Globe.js: Error processing WebSocket message:', e);
+        }
+      };
+
+      websocket.onerror = (error) => {
+        console.error('Globe.js: WebSocket error:', error);
+      };
+
+      websocket.onclose = (event) => {
+        console.log('Globe.js: WebSocket connection closed.', event.code, event.reason);
+        // Optional: Implement reconnection logic
+        // setTimeout(connectWebSocket, 5000); // Attempt to reconnect after 5 seconds
+      };
+    };
+
+    if (typeof window !== 'undefined') { // Ensure WebSocket is only created in browser
+        connectWebSocket();
+    }
+
 
     const handleResize = () => {
       if (mountRef.current) {
@@ -416,8 +544,18 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
       dotMaterial.dispose();
       
       // instancedDotsMesh and glowSprite are children of globeSphere.
-      // Removing globeSphere will also remove them from the scene.
-      scene.remove(globeSphere); 
+      // Removing globeSphereRef.current will also remove them from the scene.
+      if (globeSphereRef.current && sceneRef.current) {
+        sceneRef.current.remove(globeSphereRef.current);
+      }
+      // Clean up any remaining arcs
+      activeArcsRef.current.forEach(arc => {
+        if (globeSphereRef.current) globeSphereRef.current.remove(arc);
+        if (arc.geometry) arc.geometry.dispose();
+        if (arc.material) arc.material.dispose();
+      });
+      activeArcsRef.current = [];
+      
       dotIdMap.current = {};
       regionDotsMap.current = {}; 
       regionCentroidsMap.current = {}; 
@@ -427,8 +565,19 @@ const Globe = ({ countryUpdate }) => { // Changed to single countryUpdate prop
         if (instancedDotsMeshRef.current.parent) {
             instancedDotsMeshRef.current.parent.remove(instancedDotsMeshRef.current);
         }
-        instancedDotsMeshRef.current.dispose(); // Dispose geometry and material if unique
+        // instancedDotsMeshRef.current.dispose(); // Geometry and material are shared, disposed above
         instancedDotsMeshRef.current = null;
+      }
+      if (globeSphereRef.current) {
+        // globeSphereRef.current.geometry.dispose(); // Shared, disposed above
+        // globeSphereRef.current.material.dispose(); // Shared, disposed above
+        globeSphereRef.current = null;
+      }
+      sceneRef.current = null;
+
+      // Close WebSocket connection
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.close();
       }
     };
   }, []); // Empty dependency array, so this runs once on mount and cleanup on unmount

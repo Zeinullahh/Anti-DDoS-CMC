@@ -31,36 +31,64 @@ app.prepare().then(() => {
 
   // Create a separate WebSocket server
   const wss = new WebSocketServer({ port: websocketPort });
+  const browserClients = new Set(); // To store connected browser clients
 
   console.log(`> WebSocket Server Ready and listening on port ${websocketPort}`);
 
   wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress;
-    console.log(`WebSocket: Client connected from ${clientIp}`);
+    const clientIp = req.socket.remoteAddress; // This might be NGINX's IP if proxied
+    const trueClientIp = req.headers['x-forwarded-for'] || clientIp; // Get true client IP if behind proxy
+    console.log(`WebSocket: Client connected from ${trueClientIp}`);
+    browserClients.add(ws); // Assume any connection could be a browser client initially
 
     ws.on('message', (message) => {
+      // Assume messages are from the agent
       try {
-        const messageString = message.toString(); // Convert Buffer to string
-        console.log('WebSocket: Received raw message:', messageString);
-        const data = JSON.parse(messageString);
-        console.log('WebSocket: Received parsed data:', data);
-        // TODO: Process the received data (e.g., update globe, store in DB, etc.)
-        // For now, we are just logging it.
+        const messageString = message.toString();
+        console.log(`WebSocket: Received raw message from agent (${trueClientIp}):`, messageString);
+        const agentData = JSON.parse(messageString); // agentData is like {"ip1": "US", "ip2": "CA"}
+        console.log(`WebSocket: Received parsed data from agent (${trueClientIp}):`, agentData);
+
+        // Prepare data for broadcasting to browser clients
+        // We'll send an array of { ip: "...", countryCode: "..." }
+        const trafficDataForFrontend = Object.entries(agentData).map(([ip, countryCode]) => ({
+          ip,
+          countryCode
+        }));
+
+        if (trafficDataForFrontend.length > 0) {
+          const broadcastMessage = JSON.stringify({ type: 'trafficUpdate', payload: trafficDataForFrontend });
+          console.log('WebSocket: Broadcasting to browser clients:', broadcastMessage);
+          browserClients.forEach(client => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) { // Don't send back to the agent, only to other clients
+              client.send(broadcastMessage);
+            } else if (client === ws) {
+              // This means the agent itself is in browserClients. This is okay if agent doesn't expect a reply here.
+              // Or, we can refine client management if agent should never be in browserClients.
+              // For now, this logic is fine as long as agent doesn't process this broadcast.
+            }
+          });
+        }
+
       } catch (e) {
-        console.error('WebSocket: Failed to parse message or error in processing:', e);
-        ws.send(JSON.stringify({ error: 'Invalid JSON received or processing error.' }));
+        console.error(`WebSocket: Failed to parse message from agent (${trueClientIp}) or error in processing:`, e);
+        // Optionally send error back to agent if it's expecting a response or status
+        // ws.send(JSON.stringify({ error: 'Invalid JSON received or processing error.' }));
       }
     });
 
     ws.on('close', () => {
-      console.log(`WebSocket: Client ${clientIp} disconnected`);
+      console.log(`WebSocket: Client ${trueClientIp} disconnected`);
+      browserClients.delete(ws);
     });
 
     ws.on('error', (error) => {
-      console.error(`WebSocket: Error for client ${clientIp}:`, error);
+      console.error(`WebSocket: Error for client ${trueClientIp}:`, error);
+      browserClients.delete(ws); // Remove on error as well
     });
 
-    ws.send(JSON.stringify({ message: 'WebSocket connection established with Next.js server.' }));
+    // Send a welcome message to the newly connected client (could be browser or agent)
+    ws.send(JSON.stringify({ type: 'connection', message: 'WebSocket connection established.' }));
   });
 
   wss.on('error', (error) => {
