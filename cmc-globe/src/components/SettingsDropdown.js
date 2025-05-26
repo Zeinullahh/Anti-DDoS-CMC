@@ -5,7 +5,6 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
   const [showContent, setShowContent] = useState(false);
 
   // currentSettings will now directly be the settings prop from UIFrame
-  // UIFrame handles defaults and localStorage loading.
   const currentSettings = settings;
 
   useEffect(() => {
@@ -17,29 +16,27 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
     }
   }, [isOpen]);
 
-  // Click outside to close (for the main modal, not dropdown behavior)
-  // This useEffect for click outside is simplified as the backdrop div itself handles onClose.
-  // No need for querySelector if the main div has the onClick.
-
   if (!isOpen) return null;
 
-  // Generic handler for most inputs
-  const handleChange = (key, value, type = 'value') => {
-    let processedValue = value;
+  // Updated handleChange to match UIFrame.js onSettingChange(mainKey, subKey, value)
+  const handleChange = (mainKey, subKey, eventValue, type = 'text') => {
+    let processedValue = eventValue;
     if (type === 'number') {
-      processedValue = value === '' ? '' : Number(value); // Allow empty string for clearing, then convert
+      // Allow empty string for user to clear input, otherwise convert to Number
+      processedValue = eventValue === '' ? '' : Number(eventValue);
     } else if (type === 'checkbox') {
-      processedValue = value; // Directly use boolean
+      processedValue = eventValue; // eventValue is already boolean (e.target.checked)
     }
-    onSettingChange(key, processedValue); // category is null for these top-level settings
+    // If subKey is null, it's a top-level setting (e.g. cacheOptimizationEnabled)
+    // Otherwise, it's a nested setting (e.g. connectionRateLimit.zoneSize)
+    onSettingChange(mainKey, subKey, processedValue);
   };
   
   const backdropBaseClasses = "fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ease-in-out settings-backdrop-unique-class";
-  // Changed width to 60vw
   const panelBaseClasses = "glass-panel w-[60vw] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 ease-in-out p-6 shadow-2xl text-white";
 
   // Helper component for each setting row
-  const SettingRow = ({ label, tooltipText, children }) => (
+  const SettingRow = ({ label, tooltipText, children, subLabel = null }) => (
     <div className="mb-5">
       <div className="flex items-center mb-1">
         <label className="block text-sm font-medium text-gray-200 mr-2">{label}</label>
@@ -54,14 +51,31 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
           </div>
         )}
       </div>
+      {subLabel && <p className="text-xs text-gray-400 mb-2">{subLabel}</p>}
       {children}
     </div>
   );
 
+  // Helper for individual input fields within a SettingRow if needed
+  const InputField = ({ label, value, onChange, type = "text", placeholder = "", min = undefined }) => (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <input
+        type={type}
+        min={min}
+        value={value || ''} // Ensure controlled component, handle undefined/null by showing empty string
+        onChange={onChange}
+        className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-400"
+        placeholder={placeholder}
+      />
+    </div>
+  );
+
+
   return (
     <div
       className={`${backdropBaseClasses} ${showContent ? 'bg-black/30 backdrop-blur-sm opacity-100' : 'bg-black/0 backdrop-blur-none opacity-0'}`}
-      onClick={(e) => { // Click on backdrop closes
+      onClick={(e) => {
         if (e.target === e.currentTarget) {
             onClose();
         }
@@ -69,7 +83,7 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
     >
       <div
         ref={panelRef}
-        className={`${panelBaseClasses} ${showContent ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} overflow-y-auto`} // Added overflow-y-auto
+        className={`${panelBaseClasses} ${showContent ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} overflow-y-auto`}
         onClick={(e) => e.stopPropagation()} 
       >
         <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
@@ -82,38 +96,85 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
           </button>
         </div>
 
-        {/* New Settings Sections */}
-        <SettingRow label="Connection Rate Limiting" tooltipText="The limit_conn module can limit the number of connections established by each IP at the same time. (e.g., connections per IP)">
-          <input
-            type="number"
-            min="0"
-            value={currentSettings.connectionRateLimit || ''}
-            onChange={(e) => handleChange('connectionRateLimit', e.target.value, 'number')}
-            className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500"
-            placeholder="e.g., 10"
-          />
+        <SettingRow label="Connection Rate Limiting" tooltipText="The limit_conn module can limit the number of connections established by each IP at the same time.">
+          <div className="grid md:grid-cols-2 gap-4">
+            <InputField
+              label="Zone Size (e.g., 10m)"
+              value={currentSettings.connectionRateLimit?.zoneSize}
+              onChange={(e) => handleChange('connectionRateLimit', 'zoneSize', e.target.value, 'text')}
+            />
+            <InputField
+              label="Max Connections per IP"
+              type="number"
+              min="0"
+              value={currentSettings.connectionRateLimit?.maxConnections}
+              onChange={(e) => handleChange('connectionRateLimit', 'maxConnections', e.target.value, 'number')}
+            />
+          </div>
         </SettingRow>
 
-        <SettingRow label="Request Rate Limiting" tooltipText="The limit_req module can be used to limit the request rate to prevent some malicious users from making a large number of requests too quickly. (e.g., requests per second per IP)">
-          <input
-            type="number"
-            min="0"
-            value={currentSettings.requestRateLimit || ''}
-            onChange={(e) => handleChange('requestRateLimit', e.target.value, 'number')}
-            className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500"
-            placeholder="e.g., 5"
-          />
+        <SettingRow label="Request Rate Limiting" tooltipText="The limit_req module can be used to limit the request rate to prevent some malicious users from making a large number of requests too quickly.">
+          <div className="grid md:grid-cols-2 gap-4 mb-2">
+            <InputField
+              label="Zone Size (e.g., 10m)"
+              value={currentSettings.requestRateLimit?.zoneSize}
+              onChange={(e) => handleChange('requestRateLimit', 'zoneSize', e.target.value, 'text')}
+            />
+            <InputField
+              label="Rate (e.g., 5r/s)"
+              value={currentSettings.requestRateLimit?.rate}
+              onChange={(e) => handleChange('requestRateLimit', 'rate', e.target.value, 'text')}
+            />
+            <InputField
+              label="Burst"
+              type="number"
+              min="0"
+              value={currentSettings.requestRateLimit?.burst}
+              onChange={(e) => handleChange('requestRateLimit', 'burst', e.target.value, 'number')}
+            />
+            <div className="flex items-end pb-2"> {/* Adjusted for alignment */}
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-purple-500 bg-gray-700 border-gray-600 rounded focus:ring-purple-600"
+                  checked={currentSettings.requestRateLimit?.noDelay || false}
+                  onChange={(e) => handleChange('requestRateLimit', 'noDelay', e.target.checked, 'checkbox')}
+                />
+                <span className="ml-2 text-sm text-gray-300">No Delay</span>
+              </label>
+            </div>
+          </div>
         </SettingRow>
 
-        <SettingRow label="Request Timeout Setting" tooltipText="Reasonable request timeout setting can prevent malicious users from occupying server resources for a long time and reduce DDoS attacks such as slowloris. (in seconds)">
-          <input
-            type="number"
-            min="0"
-            value={currentSettings.requestTimeout || ''}
-            onChange={(e) => handleChange('requestTimeout', e.target.value, 'number')}
-            className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500"
-            placeholder="e.g., 30"
-          />
+        <SettingRow label="Request Timeout Settings" tooltipText="Reasonable request timeout setting can prevent malicious users from occupying server resources for a long time and reduce DDoS attacks such as slowloris.">
+          <div className="grid md:grid-cols-2 gap-4">
+            <InputField
+              label="Keepalive Timeout (s)"
+              type="number"
+              min="0"
+              value={currentSettings.requestTimeout?.keepalive}
+              onChange={(e) => handleChange('requestTimeout', 'keepalive', e.target.value, 'number')}
+            />
+            <InputField
+              label="Client Max Body Size (e.g., 1m)"
+              value={currentSettings.requestTimeout?.maxBodySize}
+              onChange={(e) => handleChange('requestTimeout', 'maxBodySize', e.target.value, 'text')}
+            />
+            <InputField
+              label="Client Body Timeout (s)"
+              type="number"
+              min="0"
+              value={currentSettings.requestTimeout?.bodyTimeout}
+              onChange={(e) => handleChange('requestTimeout', 'bodyTimeout', e.target.value, 'number')}
+            />
+            <InputField
+              label="Client Header Timeout (s)"
+              type="number"
+              min="0"
+              value={currentSettings.requestTimeout?.headerTimeout}
+              onChange={(e) => handleChange('requestTimeout', 'headerTimeout', e.target.value, 'number')}
+            />
+          </div>
         </SettingRow>
 
         <SettingRow label="Cache and Static Resource Optimization" tooltipText="By configuring cache and optimizing the delivery of static resources, you can reduce the number of requests that web server directly handles on the backend.">
@@ -123,7 +184,7 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
                 type="checkbox"
                 className="sr-only peer"
                 checked={currentSettings.cacheOptimizationEnabled || false}
-                onChange={(e) => handleChange('cacheOptimizationEnabled', e.target.checked, 'checkbox')}
+                onChange={(e) => handleChange('cacheOptimizationEnabled', null, e.target.checked, 'checkbox')}
               />
               <div className="w-10 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
             </div>
@@ -140,7 +201,7 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
                 type="checkbox"
                 className="sr-only peer"
                 checked={currentSettings.httpRequestQueueEnabled || false}
-                onChange={(e) => handleChange('httpRequestQueueEnabled', e.target.checked, 'checkbox')}
+                onChange={(e) => handleChange('httpRequestQueueEnabled', null, e.target.checked, 'checkbox')}
               />
               <div className="w-10 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
             </div>
@@ -154,7 +215,7 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
           <SettingRow label="GeoIP Update Frequency" tooltipText={null}>
             <select
               value={currentSettings.geoIpUpdateFrequency || 'Daily'}
-              onChange={(e) => handleChange('geoIpUpdateFrequency', e.target.value)}
+              onChange={(e) => handleChange('geoIpUpdateFrequency', null, e.target.value, 'text')}
               className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500"
             >
               <option value="Set manually">Set manually</option>
@@ -166,18 +227,17 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
 
           {currentSettings.geoIpUpdateFrequency === 'Set manually' && (
             <SettingRow label="Manual Update Frequency (hours)" tooltipText="Enter the update interval in hours.">
-              <input
+              <InputField
+                label="" // Sub-label not needed as main label is descriptive
                 type="number"
                 min="1"
-                value={currentSettings.geoIpManualHours || ''}
-                onChange={(e) => handleChange('geoIpManualHours', e.target.value, 'number')}
-                className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500"
+                value={currentSettings.geoIpManualHours}
+                onChange={(e) => handleChange('geoIpManualHours', null, e.target.value, 'number')}
                 placeholder="e.g., 24"
               />
             </SettingRow>
           )}
         </div>
-
       </div>
     </div>
   );

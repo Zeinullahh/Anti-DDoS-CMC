@@ -8,15 +8,28 @@ import SettingsDropdown from './SettingsDropdown'; // Added
 const LOCAL_STORAGE_SETTINGS_KEY = 'globeAppSettings';
 
 const initialAppSettings = {
-  connectionRateLimit: 0,
-  requestRateLimit: 0,
-  requestTimeout: 30,
+  connectionRateLimit: {
+    zoneSize: '10m',
+    maxConnections: 10,
+  },
+  requestRateLimit: {
+    zoneSize: '10m',
+    rate: '5r/s',
+    burst: 10,
+    noDelay: true,
+  },
+  requestTimeout: {
+    keepalive: 10,
+    maxBodySize: '1m', // string input
+    bodyTimeout: 10,   // number input (seconds)
+    headerTimeout: 10, // number input (seconds)
+  },
   cacheOptimizationEnabled: true,
   httpRequestQueueEnabled: false,
-  geoIpUpdateFrequency: 'Daily', // Matched case for display
+  geoIpUpdateFrequency: 'Daily',
   geoIpManualHours: 24,
-  // Keep old visibility settings for now, can be cleaned up later if not used
-  visibility: {
+  // Old visibility settings - can be removed if no longer needed by SettingsDropdown
+  visibility: { 
     blockedIPs: true,
     unblockedIPs: true,
     blacklistedCountries: true,
@@ -25,27 +38,32 @@ const initialAppSettings = {
 };
 
 
-const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCallback }) => { // Added onUnblacklistCountryCallback
+const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCallback }) => {
   const [isMenuPanelOpen, setIsMenuPanelOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState(initialAppSettings);
-
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    const storedSettings = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+  const [appSettings, setAppSettings] = useState(() => {
+    // Load initial state from localStorage or use defaults
+    const storedSettings = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY) : null;
     if (storedSettings) {
       try {
-        const parsedSettings = JSON.parse(storedSettings);
-        // Merge with initialAppSettings to ensure all keys are present if some were added/removed
-        setAppSettings(prev => ({ ...initialAppSettings, ...prev, ...parsedSettings }));
+        const parsed = JSON.parse(storedSettings);
+        // Deep merge to ensure new default fields are added if not in localStorage
+        // and old ones from localStorage are preserved if still relevant.
+        return {
+          ...initialAppSettings,
+          ...parsed,
+          connectionRateLimit: { ...initialAppSettings.connectionRateLimit, ...parsed.connectionRateLimit },
+          requestRateLimit: { ...initialAppSettings.requestRateLimit, ...parsed.requestRateLimit },
+          requestTimeout: { ...initialAppSettings.requestTimeout, ...parsed.requestTimeout },
+          visibility: { ...initialAppSettings.visibility, ...parsed.visibility },
+        };
       } catch (error) {
         console.error("Failed to parse app settings from localStorage", error);
-        setAppSettings(initialAppSettings); // Fallback to defaults
+        return initialAppSettings; // Fallback to defaults
       }
-    } else {
-      setAppSettings(initialAppSettings); // No stored settings, use defaults
     }
-  }, []);
+    return initialAppSettings; // No stored settings, use defaults
+  });
 
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -75,25 +93,24 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
     // Implement chat functionality or panel toggle here
   };
 
-  const handleSettingChange = (key, value, category = null) => { // Modified signature for flexibility
+  const handleSettingChange = (mainKey, subKey, value) => {
     setAppSettings(prevSettings => {
-      if (category) { // For nested settings like old 'visibility'
+      if (subKey) { // It's a nested property
         return {
           ...prevSettings,
-          [category]: {
-            ...prevSettings[category],
-            [key]: value
+          [mainKey]: {
+            ...prevSettings[mainKey],
+            [subKey]: value
           }
         };
       }
-      // For new top-level settings
+      // It's a top-level property (e.g., cacheOptimizationEnabled, geoIpUpdateFrequency)
       return {
         ...prevSettings,
-        [key]: value
+        [mainKey]: value
       };
     });
-    // localStorage persistence is handled by the useEffect watching appSettings
-    console.log(`Setting changed: ${category ? `${category}.${key}` : key} = ${value}`);
+    // console.log(`Setting changed: ${mainKey}${subKey ? `.${subKey}` : ''} = ${value}`);
   };
 
   // This function will be passed to MenuPanel and eventually to Globe to update dot colors
