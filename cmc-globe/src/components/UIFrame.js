@@ -1,22 +1,64 @@
 // UIFrame.js
 // Glassmorphic UI layout wrapper
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback, useEffect } from 'react'; // Added useEffect
 import IconButton from './IconButton'; // Assuming IconButton is in the same directory
 import MenuPanel from './MenuPanel';   // Assuming MenuPanel is in the same directory
 import SettingsDropdown from './SettingsDropdown'; // Added
 
+const LOCAL_STORAGE_SETTINGS_KEY = 'globeAppSettings';
+
+const initialAppSettings = {
+  connectionRateLimit: 0,
+  requestRateLimit: 0,
+  requestTimeout: 30,
+  cacheOptimizationEnabled: true,
+  httpRequestQueueEnabled: false,
+  geoIpUpdateFrequency: 'Daily', // Matched case for display
+  geoIpManualHours: 24,
+  // Keep old visibility settings for now, can be cleaned up later if not used
+  visibility: {
+    blockedIPs: true,
+    unblockedIPs: true,
+    blacklistedCountries: true,
+    arcs: true,
+  },
+};
+
+
 const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCallback }) => { // Added onUnblacklistCountryCallback
   const [isMenuPanelOpen, setIsMenuPanelOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState({
-    visibility: {
-      blockedIPs: true,
-      unblockedIPs: true,
-      blacklistedCountries: true,
-      arcs: true,
-    },
-    geoIpFrequency: 'daily',
-  });
+  const [appSettings, setAppSettings] = useState(initialAppSettings);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const storedSettings = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+    if (storedSettings) {
+      try {
+        const parsedSettings = JSON.parse(storedSettings);
+        // Merge with initialAppSettings to ensure all keys are present if some were added/removed
+        setAppSettings(prev => ({ ...initialAppSettings, ...prev, ...parsedSettings }));
+      } catch (error) {
+        console.error("Failed to parse app settings from localStorage", error);
+        setAppSettings(initialAppSettings); // Fallback to defaults
+      }
+    } else {
+      setAppSettings(initialAppSettings); // No stored settings, use defaults
+    }
+  }, []);
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    // Don't save initial empty state if it hasn't been populated from localStorage yet
+    // or if it's still the default initialAppSettings object reference (first render)
+    if (appSettings !== initialAppSettings && Object.keys(appSettings).length > 0) {
+        try {
+            localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(appSettings));
+        } catch (error) {
+            console.error("Failed to save app settings to localStorage", error);
+        }
+    }
+  }, [appSettings]);
 
   const toggleMenuPanel = () => {
     setIsMenuPanelOpen(prev => !prev);
@@ -33,9 +75,9 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
     // Implement chat functionality or panel toggle here
   };
 
-  const handleSettingChange = (category, key, value) => {
+  const handleSettingChange = (key, value, category = null) => { // Modified signature for flexibility
     setAppSettings(prevSettings => {
-      if (category) {
+      if (category) { // For nested settings like old 'visibility'
         return {
           ...prevSettings,
           [category]: {
@@ -44,13 +86,13 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
           }
         };
       }
-      // For top-level settings like geoIpFrequency
+      // For new top-level settings
       return {
         ...prevSettings,
         [key]: value
       };
     });
-    // Here you would also persist settings if needed (e.g., to localStorage or a backend)
+    // localStorage persistence is handled by the useEffect watching appSettings
     console.log(`Setting changed: ${category ? `${category}.${key}` : key} = ${value}`);
   };
 
