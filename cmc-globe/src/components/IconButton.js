@@ -3,7 +3,8 @@
 import React from 'react';
 import Image from 'next/image'; // Using Next.js Image for optimization if icons are local
 
-const IconButton = ({ iconSrc, altText, onClick, positionClasses }) => {
+const IconButton = ({ iconSrc, altText, onClick, positionClasses, bgClass }) => {
+  const defaultBg = "bg-white/10 hover:bg-white/20";
   return (
     <button
       onClick={onClick}
@@ -12,11 +13,10 @@ const IconButton = ({ iconSrc, altText, onClick, positionClasses }) => {
         w-12 h-12 // Explicit width and height (48px)
         flex items-center justify-center // Center the icon
         p-0 // Remove padding here as flex centering handles it with fixed size
-        bg-white/10
+        ${bgClass || defaultBg} 
         backdrop-blur-md 
         rounded-full 
         border border-white/20 
-        hover:bg-white/20 
         focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50
         transition-all duration-200 ease-in-out
         shadow-lg

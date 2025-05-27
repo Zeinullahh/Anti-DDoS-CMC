@@ -168,11 +168,12 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
 
       {/* Chat Icon Button - Bottom Right */}
       <IconButton
-        iconSrc="/icons/chat.svg" // Corrected to iconSrc
+        iconSrc="/icons/chat.svg"
         altText="Chat"
-        onClick={handleChatClick} // Added placeholder handler
+        onClick={handleChatClick}
         positionClasses="absolute bottom-5 right-5 z-20"
         tooltip="Chat"
+        bgClass="bg-black/30 hover:bg-black/50" // Added custom background for chat icon
       />
 
       <MenuPanel 

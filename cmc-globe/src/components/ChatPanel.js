@@ -99,27 +99,20 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
       });
 
       if (!apiResponse.ok) {
-        // Attempt to get more specific error text if possible
         let errorDetail = `API request failed with status ${apiResponse.status}`;
+        const responseText = await apiResponse.text(); // Read body as text ONCE
+        console.error("Raw error response from /api/chat:", responseText);
         try {
-            const errorData = await apiResponse.json(); // Try to parse as JSON first
+            const errorData = JSON.parse(responseText); // Try to parse the text as JSON
             errorDetail = errorData.error || errorDetail;
         } catch (e) {
-            // If not JSON, try to get as text (could be HTML error page)
-            const textError = await apiResponse.text();
-            errorDetail = textError || errorDetail;
-            console.error("Non-JSON API Error Response Text:", textError);
+            // If parsing text as JSON fails, use the text itself (it might be HTML)
+            errorDetail = responseText || errorDetail;
         }
         throw new Error(errorDetail);
       }
 
-      const contentType = apiResponse.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const responseText = await apiResponse.text();
-        console.error("Received non-JSON response from /api/chat:", responseText);
-        throw new Error(`Server sent an unexpected response format. Expected JSON but received: ${contentType}`);
-      }
-      
+      // If response is OK, proceed to parse as JSON
       const data = await apiResponse.json();
       let botResponseText = data.reply; // This is the text from Gemini
 
@@ -218,8 +211,8 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
               className={`
                 max-w-[75%] p-2.5 rounded-xl text-sm
                 ${msg.sender === 'user' 
-                  ? 'bg-purple-600/70 text-white rounded-br-none shadow-[inset_3px_3px_5px_rgba(0,0,0,0.2),_inset_-3px_-3px_5px_rgba(255,255,255,0.1)]' 
-                  : 'bg-slate-700/60 text-gray-200 rounded-bl-none shadow-[inset_3px_3px_5px_rgba(0,0,0,0.2),_inset_-3px_-3px_5px_rgba(255,255,255,0.05)]'
+                  ? 'bg-purple-600/80 text-white rounded-br-none shadow-md' // User message style
+                  : 'bg-white/80 backdrop-blur-sm text-gray-800 rounded-bl-none shadow-md' // Bot message style (light glassmorphism)
                 }
               `}
             >
