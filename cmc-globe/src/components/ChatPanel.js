@@ -99,10 +99,27 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
       });
 
       if (!apiResponse.ok) {
-        const errorData = await apiResponse.json();
-        throw new Error(errorData.error || `API request failed with status ${apiResponse.status}`);
+        // Attempt to get more specific error text if possible
+        let errorDetail = `API request failed with status ${apiResponse.status}`;
+        try {
+            const errorData = await apiResponse.json(); // Try to parse as JSON first
+            errorDetail = errorData.error || errorDetail;
+        } catch (e) {
+            // If not JSON, try to get as text (could be HTML error page)
+            const textError = await apiResponse.text();
+            errorDetail = textError || errorDetail;
+            console.error("Non-JSON API Error Response Text:", textError);
+        }
+        throw new Error(errorDetail);
       }
 
+      const contentType = apiResponse.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const responseText = await apiResponse.text();
+        console.error("Received non-JSON response from /api/chat:", responseText);
+        throw new Error(`Server sent an unexpected response format. Expected JSON but received: ${contentType}`);
+      }
+      
       const data = await apiResponse.json();
       let botResponseText = data.reply; // This is the text from Gemini
 
@@ -168,18 +185,19 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
 
   if (!isOpen) return null;
 
-  // Neomorphism style for chat panel - adjust as needed
+  // Glassmorphism style for chat panel
   const panelBaseClasses = `
     fixed bottom-20 right-5 z-50 
-    w-[350px] h-[500px] 
-    bg-gradient-to-br from-purple-700/30 to-indigo-800/30
-    backdrop-blur-md
-    rounded-2xl 
-    shadow-[8px_8px_16px_rgba(0,0,0,0.3),_-8px_-8px_16px_rgba(255,255,255,0.05)]
+    w-[360px] h-[520px] 
+    bg-white/5 backdrop-blur-xl 
+    rounded-xl 
     border border-white/10
+    shadow-2xl 
     flex flex-col overflow-hidden
     transition-all duration-300 ease-in-out
   `;
+  // Note: The glassmorphism often relies on a background to blur.
+  // Ensure the parent container or body has some visual content.
 
   return (
     <div
@@ -222,18 +240,26 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
             onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
             placeholder="Ask to change settings..."
             className="flex-grow p-2.5 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-500"
-            disabled={isLoading} // No direct model check here anymore
+            disabled={isLoading}
           />
           <button
             onClick={sendMessage}
-            disabled={isLoading} // No direct model check here anymore
-            className="p-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 shadow-[3px_3px_7px_rgba(0,0,0,0.3),_-3px_-3px_7px_rgba(255,255,255,0.05)] active:shadow-[inset_3px_3px_5px_rgba(0,0,0,0.2),_inset_-3px_-3px_5px_rgba(255,255,255,0.1)]"
+            disabled={isLoading}
+            className="p-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 transition-colors"
           >
-            {isLoading ? '...' : 'Send'}
+            {isLoading ? (
+              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clipRule="evenodd" />
+              </svg>
+            )}
           </button>
         </div>
-        {/* Removed direct API_KEY check from UI, backend handles initialization status */}
-         <p className="text-xs text-amber-400 mt-1 text-center">AI Assistant. For production, ensure API key is server-side.</p>
+        {/* Removed the dark-yellow warning message */}
       </div>
     </div>
   );

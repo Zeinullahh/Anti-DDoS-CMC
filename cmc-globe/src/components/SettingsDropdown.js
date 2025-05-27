@@ -4,24 +4,34 @@ import React, { useState, useEffect, useRef } from 'react';
 const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
   const panelRef = useRef(null);
   const [showContent, setShowContent] = useState(false);
-  const [localSettings, setLocalSettings] = useState(currentGlobalSettings);
+  const [localSettings, setLocalSettings] = useState(null); // Initialize as null or undefined
 
-  // Effect to initialize/reset localSettings when the modal opens or global settings change while closed
+  // Effect to manage content visibility and initialize localSettings when modal opens
   useEffect(() => {
     if (isOpen) {
-      // Deep clone to prevent modifying the prop directly if it's an object
+      // Initialize localSettings with a deep clone of global settings ONLY when opening
+      // This check ensures it only happens when localSettings hasn't been set for this open instance yet,
+      // or if you want to force re-init every time it opens (current behavior).
+      // To prevent re-init if already open and props change (which shouldn't happen with save-on-close):
+      // We can rely on the fact that this effect runs when isOpen becomes true.
       setLocalSettings(JSON.parse(JSON.stringify(currentGlobalSettings)));
+      
       const timer = setTimeout(() => setShowContent(true), 10);
       return () => clearTimeout(timer);
     } else {
       setShowContent(false);
-      // Optionally reset localSettings to global when closed if there's no "cancel" button
-      // For now, changes are only committed on save (via handleConfirmClose)
+      // When closing, localSettings will be saved by handleConfirmClose.
+      // No need to reset localSettings here as it will be re-initialized on next open.
     }
-  }, [isOpen, currentGlobalSettings]);
+  }, [isOpen]); // Only depend on isOpen for this effect to control initialization timing
 
-
-  if (!isOpen) return null;
+  // If localSettings is not yet initialized (e.g. first render while isOpen is true),
+  // or if not open, don't render the form content.
+  if (!isOpen || !localSettings) {
+    // Render nothing or a loader if isOpen is true but localSettings is briefly null
+    // However, the useEffect above should set it quickly.
+    return null; 
+  }
 
   const handleLocalChange = (mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
