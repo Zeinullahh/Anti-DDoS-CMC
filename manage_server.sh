@@ -95,28 +95,69 @@ start_app_prod() {
 
 # Function to stop the Node.js application
 stop_app() {
-    echo "Stopping Node.js application..."
+    echo "Attempting to stop Node.js application (node server.mjs)..."
+    
+    APP_STOPPED=false
+
+    # Attempt 1: Use PID file if it exists and process is running
     if [ -f "app.pid" ]; then
         PID=$(cat "app.pid")
         if ps -p "${PID}" > /dev/null; then
-            kill "${PID}"
-            # Wait a bit for the process to terminate
-            sleep 2
+            echo "Stopping process with PID ${PID} from app.pid..."
+            sudo kill "${PID}"
+            sleep 1 # Give it a moment
             if ps -p "${PID}" > /dev/null; then
-                echo "Process ${PID} did not terminate gracefully, sending SIGKILL."
-                kill -9 "${PID}"
-            else
-                echo "Process ${PID} stopped."
+                echo "Process ${PID} did not stop, trying SIGKILL..."
+                sudo kill -9 "${PID}"
+                sleep 1
             fi
-            rm "app.pid"
+            
+            if ! ps -p "${PID}" > /dev/null; then
+                echo "Process ${PID} stopped successfully."
+                APP_STOPPED=true
+            else
+                echo "Failed to stop process ${PID}."
+            fi
+            rm -f "app.pid" # Clean up pid file
         else
-            echo "Process with PID ${PID} not found. Maybe it was already stopped?"
-            rm "app.pid"
+            echo "Process with PID ${PID} from app.pid not found. Maybe already stopped."
+            rm -f "app.pid" # Clean up stale pid file
         fi
     else
-        echo "app.pid file not found. Cannot determine process to stop."
-        echo "You might need to find and kill the 'node server.mjs' process manually."
-        echo "Example: pgrep -f 'node server.mjs' | xargs kill"
+        echo "app.pid file not found."
+    fi
+
+    # Attempt 2: Find and kill any remaining 'node server.mjs' processes
+    # This is more aggressive and useful if the PID file method failed or was bypassed.
+    echo "Searching for any remaining 'node server.mjs' processes..."
+    PIDS_TO_KILL=$(pgrep -f "node ${APP_DIR_NAME}/server.mjs") # Be more specific to avoid killing other node processes
+
+    if [ -n "$PIDS_TO_KILL" ]; then
+        echo "Found running 'node ${APP_DIR_NAME}/server.mjs' processes with PIDs: $PIDS_TO_KILL"
+        echo "Attempting to stop them..."
+        # Convert PIDS_TO_KILL to an array if it contains multiple PIDs
+        for pid_val in $PIDS_TO_KILL; do
+            sudo kill "$pid_val"
+            sleep 0.5
+            if ps -p "$pid_val" > /dev/null; then
+                 sudo kill -9 "$pid_val"
+                 echo "Sent SIGKILL to $pid_val"
+            else
+                 echo "Process $pid_val stopped."
+            fi
+        done
+        APP_STOPPED=true # Assume stopped if pgrep found something and we tried to kill
+    else
+        echo "No other 'node ${APP_DIR_NAME}/server.mjs' processes found running."
+        if [ "$APP_STOPPED" = false ]; then # If PID file method also failed
+             # This means nothing was found by either method.
+             # If APP_STOPPED is true, it means PID file method worked or pgrep worked.
+             echo "Application appears to be already stopped."
+        fi
+    fi
+    
+    if [ "$APP_STOPPED" = true ]; then
+        echo "Node.js application stop attempt complete."
     fi
 }
 

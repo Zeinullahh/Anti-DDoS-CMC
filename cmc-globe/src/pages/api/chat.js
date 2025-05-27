@@ -10,9 +10,11 @@ let model;
 if (GEMINI_API_KEY) {
   try {
     genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Try a different, commonly available and efficient model
+    model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" }); 
+    console.log("Initialized Gemini model: gemini-1.5-flash-latest");
   } catch (error) {
-    console.error("Failed to initialize GoogleGenerativeAI in API route:", error);
+    console.error("Failed to initialize GoogleGenerativeAI in API route with model gemini-1.5-flash-latest:", error);
   }
 } else {
   console.warn("GEMINI_API_KEY environment variable is not set. Chat API will not function.");
