@@ -1,23 +1,35 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
 import { settingTemplates } from '../../utils/chatSettingsHelper'; // Adjust path as needed
 
+dotenv.config({ path: '../../.env.local' }); // Assuming .env.local is in cmc-globe directory
+
 // Ensure the API key is loaded from environment variables on the server
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// The example used API_KEY, but your .env.local uses GEMINI_API_KEY. Sticking to GEMINI_API_KEY.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
 
 let genAI;
 let model;
+const modelName = "gemini-2.0-flash"; // Using the model name you requested
 
 if (GEMINI_API_KEY) {
   try {
     genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // Try a different, commonly available and efficient model
-    model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" }); 
-    console.log("Initialized Gemini model: gemini-1.5-flash-latest");
+    // Using the model name you requested
+    // Adding generationConfig similar to the example, though it can also be passed to startChat/sendMessage
+    const geminiGenerationConfig = {
+      temperature: 0.7, // Adjusted from 0.9 for potentially more factual settings responses
+      topP: 1,
+      topK: 1, // Default is often higher, 1 means only the top token is considered
+      maxOutputTokens: 2048, // Adjusted from 4096, ensure it's appropriate
+    };
+    model = genAI.getGenerativeModel({ model: modelName, generationConfig: geminiGenerationConfig }); 
+    console.log(`Initialized Gemini model: ${modelName}`);
   } catch (error) {
-    console.error("Failed to initialize GoogleGenerativeAI in API route with model gemini-1.5-flash-latest:", error);
+    console.error(`Failed to initialize GoogleGenerativeAI in API route with model ${modelName}:`, error);
   }
 } else {
-  console.warn("GEMINI_API_KEY environment variable is not set. Chat API will not function.");
+  console.warn("GEMINI_API_KEY environment variable is not set (checked via process.env). Chat API will not function.");
 }
 
 export default async function handler(req, res) {
@@ -26,7 +38,8 @@ export default async function handler(req, res) {
   }
 
   if (!model) {
-    return res.status(500).json({ error: 'Gemini AI model not initialized. Check API key.' });
+    console.error("Gemini model is not initialized in handler. API_KEY found:", !!GEMINI_API_KEY);
+    return res.status(500).json({ error: 'Gemini AI model not initialized. Check API key and server logs.' });
   }
 
   const { message, history = [], currentSettings } = req.body;
@@ -68,25 +81,28 @@ If just asking questions or general chat, do not output the JSON structure.
   }));
 
   try {
-    const chat = model.startChat({
-        history: chatHistoryForPrompt,
-        generationConfig: {
-            maxOutputTokens: 1000, // Adjust as needed
-        },
-    });
+    // The example uses generateContent directly, not startChat. Let's align for simplicity.
+    // const chat = model.startChat({
+    //     history: chatHistoryForPrompt, // History might need different format for generateContent
+    // });
 
-    const fullPrompt = `${settingsContext}\n\nUser's current message: "${message}"`;
-    // console.log("Full prompt to Gemini:", fullPrompt); // For debugging on server
+    const fullPrompt = `${settingsContext}\n\nUser's current message: "${message}"\n\nChat History:\n${chatHistoryForPrompt.map(h => `${h.role}: ${h.parts[0].text}`).join('\n')}`;
+    
+    // For debugging, log the prompt being sent to Gemini
+    // console.log("Full prompt to Gemini:", fullPrompt); 
 
-    const result = await chat.sendMessage(fullPrompt);
+    // Using generateContent as per the example structure
+    const result = await model.generateContent(fullPrompt);
     const response = await result.response;
     const text = response.text();
 
-    // console.log("Gemini response text:", text); // For debugging on server
+    // For debugging, log the raw response text from Gemini
+    // console.log("Gemini response text:", text); 
     res.status(200).json({ reply: text });
 
   } catch (error) {
-    console.error('Error calling Gemini API:', error);
-    res.status(500).json({ error: 'Failed to get response from AI' });
+    console.error('Error calling Gemini API:', error.message); // Log the error message
+    // console.error('Full Gemini API error object:', error); // Optionally log the full error object
+    res.status(500).json({ error: 'Failed to get response from AI. Check server logs for details.' });
   }
 }
