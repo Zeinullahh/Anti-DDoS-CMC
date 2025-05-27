@@ -1,9 +1,10 @@
 // UIFrame.js
 // Glassmorphic UI layout wrapper
-import React, { useState, useCallback, useEffect } from 'react'; // Added useEffect
-import IconButton from './IconButton'; // Assuming IconButton is in the same directory
-import MenuPanel from './MenuPanel';   // Assuming MenuPanel is in the same directory
-import SettingsDropdown from './SettingsDropdown'; // Added
+import React, { useState, useCallback, useEffect } from 'react';
+import IconButton from './IconButton';
+import MenuPanel from './MenuPanel';
+import SettingsDropdown from './SettingsDropdown';
+import ChatPanel from './ChatPanel'; // Import ChatPanel
 
 const LOCAL_STORAGE_SETTINGS_KEY = 'globeAppSettings';
 
@@ -41,6 +42,7 @@ const initialAppSettings = {
 const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCallback }) => {
   const [isMenuPanelOpen, setIsMenuPanelOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isChatPanelOpen, setIsChatPanelOpen] = useState(false); // State for ChatPanel
   const [appSettings, setAppSettings] = useState(() => {
     // Load initial state from localStorage or use defaults
     const storedSettings = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY) : null;
@@ -85,12 +87,14 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
 
   const toggleSettings = () => {
     setIsSettingsOpen(prev => !prev);
-    if (isMenuPanelOpen) setIsMenuPanelOpen(false); 
+    if (isMenuPanelOpen) setIsMenuPanelOpen(false);
+    if (isChatPanelOpen) setIsChatPanelOpen(false); // Close chat if settings open
   };
 
   const handleChatClick = () => {
-    console.log("Chat icon clicked - Placeholder");
-    // Implement chat functionality or panel toggle here
+    setIsChatPanelOpen(prev => !prev);
+    if (isMenuPanelOpen) setIsMenuPanelOpen(false); // Close menu if chat opens
+    if (isSettingsOpen) setIsSettingsOpen(false); // Close settings if chat opens
   };
 
   const handleSettingChange = (mainKey, subKey, value) => {
@@ -111,6 +115,12 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
       };
     });
     // console.log(`Setting changed: ${mainKey}${subKey ? `.${subKey}` : ''} = ${value}`);
+  };
+  
+  // New handler to accept the whole settings object at once
+  const handleSettingsSave = (newSettings) => {
+    setAppSettings(newSettings);
+    console.log("Settings saved:", newSettings);
   };
 
   // This function will be passed to MenuPanel and eventually to Globe to update dot colors
@@ -174,9 +184,16 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
 
       <SettingsDropdown
         isOpen={isSettingsOpen}
-        onClose={toggleSettings}
-        settings={appSettings}
-        onSettingChange={handleSettingChange}
+        onClose={toggleSettings} // This will just close, save will be handled inside SettingsDropdown
+        currentGlobalSettings={appSettings}
+        onSettingsSave={handleSettingsSave}
+      />
+
+      <ChatPanel
+        isOpen={isChatPanelOpen}
+        onClose={() => setIsChatPanelOpen(false)}
+        currentGlobalSettings={appSettings}
+        onSettingsSave={handleSettingsSave} // Chat can also save settings
       />
     </div>
   );

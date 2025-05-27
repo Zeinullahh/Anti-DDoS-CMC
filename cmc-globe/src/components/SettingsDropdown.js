@@ -1,35 +1,56 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
+// Props are now currentGlobalSettings, onSettingsSave, isOpen, onClose
+const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
   const panelRef = useRef(null);
   const [showContent, setShowContent] = useState(false);
+  const [localSettings, setLocalSettings] = useState(currentGlobalSettings);
 
-  // currentSettings will now directly be the settings prop from UIFrame
-  const currentSettings = settings;
-
+  // Effect to initialize/reset localSettings when the modal opens or global settings change while closed
   useEffect(() => {
     if (isOpen) {
+      // Deep clone to prevent modifying the prop directly if it's an object
+      setLocalSettings(JSON.parse(JSON.stringify(currentGlobalSettings)));
       const timer = setTimeout(() => setShowContent(true), 10);
       return () => clearTimeout(timer);
     } else {
       setShowContent(false);
+      // Optionally reset localSettings to global when closed if there's no "cancel" button
+      // For now, changes are only committed on save (via handleConfirmClose)
     }
-  }, [isOpen]);
+  }, [isOpen, currentGlobalSettings]);
+
 
   if (!isOpen) return null;
 
-  // Updated handleChange to match UIFrame.js onSettingChange(mainKey, subKey, value)
-  const handleChange = (mainKey, subKey, eventValue, type = 'text') => {
+  const handleLocalChange = (mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
     if (type === 'number') {
-      // Allow empty string for user to clear input, otherwise convert to Number
       processedValue = eventValue === '' ? '' : Number(eventValue);
     } else if (type === 'checkbox') {
-      processedValue = eventValue; // eventValue is already boolean (e.target.checked)
+      processedValue = eventValue; 
     }
-    // If subKey is null, it's a top-level setting (e.g. cacheOptimizationEnabled)
-    // Otherwise, it's a nested setting (e.g. connectionRateLimit.zoneSize)
-    onSettingChange(mainKey, subKey, processedValue);
+
+    setLocalSettings(prev => {
+      if (subKey) {
+        return {
+          ...prev,
+          [mainKey]: {
+            ...(prev[mainKey] || {}), // Ensure mainKey object exists
+            [subKey]: processedValue
+          }
+        };
+      }
+      return {
+        ...prev,
+        [mainKey]: processedValue
+      };
+    });
+  };
+
+  const handleConfirmClose = () => {
+    onSettingsSave(localSettings); // Save the accumulated local changes
+    onClose(); // Then close the modal
   };
   
   const backdropBaseClasses = "fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ease-in-out settings-backdrop-unique-class";
@@ -77,7 +98,7 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
       className={`${backdropBaseClasses} ${showContent ? 'bg-black/30 backdrop-blur-sm opacity-100' : 'bg-black/0 backdrop-blur-none opacity-0'}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-            onClose();
+            handleConfirmClose(); // Save and close on backdrop click
         }
       }}
     >
@@ -89,26 +110,27 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
         <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
           <h3 className="text-xl font-semibold text-white">Settings</h3>
           <button
-            onClick={onClose}
+            onClick={handleConfirmClose} // Save and close on "x" button click
             className="text-gray-400 hover:text-white transition-colors text-2xl"
           >
             &times;
           </button>
         </div>
 
+        {/* Inputs now bind to localSettings and use handleLocalChange */}
         <SettingRow label="Connection Rate Limiting" tooltipText="The limit_conn module can limit the number of connections established by each IP at the same time.">
           <div className="grid md:grid-cols-2 gap-4">
             <InputField
               label="Zone Size (e.g., 10m)"
-              value={currentSettings.connectionRateLimit?.zoneSize}
-              onChange={(e) => handleChange('connectionRateLimit', 'zoneSize', e.target.value, 'text')}
+              value={localSettings.connectionRateLimit?.zoneSize}
+              onChange={(e) => handleLocalChange('connectionRateLimit', 'zoneSize', e.target.value, 'text')}
             />
             <InputField
               label="Max Connections per IP"
               type="number"
               min="0"
-              value={currentSettings.connectionRateLimit?.maxConnections}
-              onChange={(e) => handleChange('connectionRateLimit', 'maxConnections', e.target.value, 'number')}
+              value={localSettings.connectionRateLimit?.maxConnections}
+              onChange={(e) => handleLocalChange('connectionRateLimit', 'maxConnections', e.target.value, 'number')}
             />
           </div>
         </SettingRow>
@@ -117,28 +139,28 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
           <div className="grid md:grid-cols-2 gap-4 mb-2">
             <InputField
               label="Zone Size (e.g., 10m)"
-              value={currentSettings.requestRateLimit?.zoneSize}
-              onChange={(e) => handleChange('requestRateLimit', 'zoneSize', e.target.value, 'text')}
+              value={localSettings.requestRateLimit?.zoneSize}
+              onChange={(e) => handleLocalChange('requestRateLimit', 'zoneSize', e.target.value, 'text')}
             />
             <InputField
               label="Rate (e.g., 5r/s)"
-              value={currentSettings.requestRateLimit?.rate}
-              onChange={(e) => handleChange('requestRateLimit', 'rate', e.target.value, 'text')}
+              value={localSettings.requestRateLimit?.rate}
+              onChange={(e) => handleLocalChange('requestRateLimit', 'rate', e.target.value, 'text')}
             />
             <InputField
               label="Burst"
               type="number"
               min="0"
-              value={currentSettings.requestRateLimit?.burst}
-              onChange={(e) => handleChange('requestRateLimit', 'burst', e.target.value, 'number')}
+              value={localSettings.requestRateLimit?.burst}
+              onChange={(e) => handleLocalChange('requestRateLimit', 'burst', e.target.value, 'number')}
             />
-            <div className="flex items-end pb-2"> {/* Adjusted for alignment */}
+            <div className="flex items-end pb-2">
               <label className="flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   className="form-checkbox h-4 w-4 text-purple-500 bg-gray-700 border-gray-600 rounded focus:ring-purple-600"
-                  checked={currentSettings.requestRateLimit?.noDelay || false}
-                  onChange={(e) => handleChange('requestRateLimit', 'noDelay', e.target.checked, 'checkbox')}
+                  checked={localSettings.requestRateLimit?.noDelay || false}
+                  onChange={(e) => handleLocalChange('requestRateLimit', 'noDelay', e.target.checked, 'checkbox')}
                 />
                 <span className="ml-2 text-sm text-gray-300">No Delay</span>
               </label>
@@ -152,27 +174,27 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
               label="Keepalive Timeout (s)"
               type="number"
               min="0"
-              value={currentSettings.requestTimeout?.keepalive}
-              onChange={(e) => handleChange('requestTimeout', 'keepalive', e.target.value, 'number')}
+              value={localSettings.requestTimeout?.keepalive}
+              onChange={(e) => handleLocalChange('requestTimeout', 'keepalive', e.target.value, 'number')}
             />
             <InputField
               label="Client Max Body Size (e.g., 1m)"
-              value={currentSettings.requestTimeout?.maxBodySize}
-              onChange={(e) => handleChange('requestTimeout', 'maxBodySize', e.target.value, 'text')}
+              value={localSettings.requestTimeout?.maxBodySize}
+              onChange={(e) => handleLocalChange('requestTimeout', 'maxBodySize', e.target.value, 'text')}
             />
             <InputField
               label="Client Body Timeout (s)"
               type="number"
               min="0"
-              value={currentSettings.requestTimeout?.bodyTimeout}
-              onChange={(e) => handleChange('requestTimeout', 'bodyTimeout', e.target.value, 'number')}
+              value={localSettings.requestTimeout?.bodyTimeout}
+              onChange={(e) => handleLocalChange('requestTimeout', 'bodyTimeout', e.target.value, 'number')}
             />
             <InputField
               label="Client Header Timeout (s)"
               type="number"
               min="0"
-              value={currentSettings.requestTimeout?.headerTimeout}
-              onChange={(e) => handleChange('requestTimeout', 'headerTimeout', e.target.value, 'number')}
+              value={localSettings.requestTimeout?.headerTimeout}
+              onChange={(e) => handleLocalChange('requestTimeout', 'headerTimeout', e.target.value, 'number')}
             />
           </div>
         </SettingRow>
@@ -183,13 +205,13 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
               <input
                 type="checkbox"
                 className="sr-only peer"
-                checked={currentSettings.cacheOptimizationEnabled || false}
-                onChange={(e) => handleChange('cacheOptimizationEnabled', null, e.target.checked, 'checkbox')}
+                checked={localSettings.cacheOptimizationEnabled || false}
+                onChange={(e) => handleLocalChange('cacheOptimizationEnabled', null, e.target.checked, 'checkbox')}
               />
               <div className="w-10 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
             </div>
             <span className="ml-3 text-sm text-gray-300">
-              {currentSettings.cacheOptimizationEnabled ? 'Enabled' : 'Disabled'}
+              {localSettings.cacheOptimizationEnabled ? 'Enabled' : 'Disabled'}
             </span>
           </label>
         </SettingRow>
@@ -200,13 +222,13 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
               <input
                 type="checkbox"
                 className="sr-only peer"
-                checked={currentSettings.httpRequestQueueEnabled || false}
-                onChange={(e) => handleChange('httpRequestQueueEnabled', null, e.target.checked, 'checkbox')}
+                checked={localSettings.httpRequestQueueEnabled || false}
+                onChange={(e) => handleLocalChange('httpRequestQueueEnabled', null, e.target.checked, 'checkbox')}
               />
               <div className="w-10 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
             </div>
             <span className="ml-3 text-sm text-gray-300">
-              {currentSettings.httpRequestQueueEnabled ? 'Enabled' : 'Disabled'}
+              {localSettings.httpRequestQueueEnabled ? 'Enabled' : 'Disabled'}
             </span>
           </label>
         </SettingRow>
@@ -214,8 +236,8 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
         <div className="mt-6 pt-4 border-t border-white/10">
           <SettingRow label="GeoIP Update Frequency" tooltipText={null}>
             <select
-              value={currentSettings.geoIpUpdateFrequency || 'Daily'}
-              onChange={(e) => handleChange('geoIpUpdateFrequency', null, e.target.value, 'text')}
+              value={localSettings.geoIpUpdateFrequency || 'Daily'}
+              onChange={(e) => handleLocalChange('geoIpUpdateFrequency', null, e.target.value, 'text')}
               className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500"
             >
               <option value="Set manually">Set manually</option>
@@ -225,14 +247,14 @@ const SettingsDropdown = ({ isOpen, onClose, settings, onSettingChange }) => {
             </select>
           </SettingRow>
 
-          {currentSettings.geoIpUpdateFrequency === 'Set manually' && (
+          {localSettings.geoIpUpdateFrequency === 'Set manually' && (
             <SettingRow label="Manual Update Frequency (hours)" tooltipText="Enter the update interval in hours.">
               <InputField
-                label="" // Sub-label not needed as main label is descriptive
+                label="" 
                 type="number"
                 min="1"
-                value={currentSettings.geoIpManualHours}
-                onChange={(e) => handleChange('geoIpManualHours', null, e.target.value, 'number')}
+                value={localSettings.geoIpManualHours}
+                onChange={(e) => handleLocalChange('geoIpManualHours', null, e.target.value, 'number')}
                 placeholder="e.g., 24"
               />
             </SettingRow>
