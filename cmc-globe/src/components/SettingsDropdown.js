@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
 
 // Props are now currentGlobalSettings, onSettingsSave, isOpen, onClose
 const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
