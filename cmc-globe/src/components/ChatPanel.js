@@ -211,8 +211,8 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
               className={`
                 max-w-[75%] p-2.5 rounded-xl text-sm
                 ${msg.sender === 'user' 
-                  ? 'bg-purple-600/80 text-white rounded-br-none shadow-md' // User message style
-                  : 'bg-white/80 backdrop-blur-sm text-gray-800 rounded-bl-none shadow-md' // Bot message style (light glassmorphism)
+                  ? 'bg-black text-white rounded-br-none' // User message: black bg, white text
+                  : 'bg-black text-white rounded-bl-none' // Bot message: black bg, white text
                 }
               `}
             >

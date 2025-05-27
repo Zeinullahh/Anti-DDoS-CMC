@@ -33,7 +33,7 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     return null; 
   }
 
-  const handleLocalChange = (mainKey, subKey, eventValue, type = 'text') => {
+  const handleLocalChange = useCallback((mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
     if (type === 'number') {
       processedValue = eventValue === '' ? '' : Number(eventValue);
@@ -56,7 +56,7 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
         [mainKey]: processedValue
       };
     });
-  };
+  }, [setLocalSettings]); // setLocalSettings is stable
 
   const handleConfirmClose = () => {
     onSettingsSave(localSettings); // Save the accumulated local changes
