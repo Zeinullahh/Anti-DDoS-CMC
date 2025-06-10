@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import dotenv from 'dotenv';
-import { settingTemplates } from '../../utils/chatSettingsHelper'; // Adjust path as needed
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import dotenv from "dotenv";
+import { settingTemplates } from "../../utils/chatSettingsHelper"; // Adjust path as needed
 
 dotenv.config({ path: '../../.env.local' }); // Assuming .env.local is in cmc-globe directory
 
