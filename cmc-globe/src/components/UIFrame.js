@@ -145,7 +145,7 @@ const UIFrame = ({ children, onBlacklistCountryCallback, onUnblacklistCountryCal
 
       {/* Logo in top-left */}
       <div className="absolute top-5 left-5 z-20">
-        <img src="/logo.svg" alt="Logo" className="w-10 h-10" /> {/* Adjust size as needed */}
+        <img src="/logo.svg" alt="Logo" className="w-6 h-6" /> {/* CHANGED HERE */}
       </div>
       
       {/* Settings Icon Button - Top Right */}

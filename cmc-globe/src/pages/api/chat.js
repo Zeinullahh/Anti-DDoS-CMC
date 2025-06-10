@@ -10,7 +10,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 let genAI;
 let model;
-const modelName = "gemini-2.0-flash"; // Using the model name you requested
+const modelName = "gemini-2.5-flash-preview-04-17"; // Using the model name you requested
 
 if (GEMINI_API_KEY) {
   try {
