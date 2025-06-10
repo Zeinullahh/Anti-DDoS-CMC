@@ -1,24 +1,61 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
+// --- HELPER COMPONENTS (MOVED OUTSIDE) ---
+// By defining these outside the main component, they are not re-created on every render,
+// which is a key part of solving the input focus loss issue.
+
+const SettingRow = ({ label, tooltipText, children }) => (
+  <div className="mb-5">
+    <div className="flex items-center mb-1">
+      <label className="block text-sm font-medium text-gray-200 mr-2">{label}</label>
+      {tooltipText && (
+        <div className="relative group">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.755 4 3.92C16 12.802 14.904 14 12.94 14c-.992 0-1.824-.402-2.438-1.038M12 17v.01" />
+          </svg>
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 text-xs text-white bg-gray-800 rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
+            {tooltipText}
+          </div>
+        </div>
+      )}
+    </div>
+    {children}
+  </div>
+);
+
+const InputField = ({ label, value, onChange, type = "text", placeholder = "", min = undefined, pattern = undefined }) => (
+  <div>
+    <label className="block text-xs text-gray-400 mb-1">{label}</label>
+    <input
+      type={type}
+      min={min}
+      pattern={pattern}
+      title={pattern ? `Invalid format. Please match the required pattern.` : undefined}
+      value={value || ''}
+      onChange={onChange}
+      className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-400 peer invalid:border-red-500 invalid:ring-red-500"
+      placeholder={placeholder}
+    />
+    {pattern && <p className="mt-1 text-xs text-red-400 invisible peer-invalid:visible">Invalid format.</p>}
+  </div>
+);
+
+
+// --- MAIN COMPONENT ---
 const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
   const panelRef = useRef(null);
   const [showContent, setShowContent] = useState(false);
   const [localSettings, setLocalSettings] = useState(null);
 
-  // --- HOOKS CALLED AT TOP LEVEL ---
   useEffect(() => {
     if (isOpen) {
-      // Initialize localSettings with a deep clone of global settings ONLY when opening.
-      // This effect now ONLY depends on `isOpen`, so it will not re-run and reset
-      // the form while you are typing, even if the parent component re-renders.
       setLocalSettings(JSON.parse(JSON.stringify(currentGlobalSettings)));
-      
       const timer = setTimeout(() => setShowContent(true), 10);
       return () => clearTimeout(timer);
     } else {
       setShowContent(false);
     }
-  }, [isOpen]); // <<<< CORRECTED DEPENDENCY ARRAY
+  }, [isOpen]); // Correct dependency array
 
   const handleLocalChange = useCallback((mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
@@ -27,24 +64,14 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     } else if (type === 'checkbox') {
       processedValue = eventValue; 
     }
-
     setLocalSettings(prev => {
       if (!prev) return null;
       if (subKey) {
-        return {
-          ...prev,
-          [mainKey]: {
-            ...(prev[mainKey] || {}),
-            [subKey]: processedValue
-          }
-        };
+        return { ...prev, [mainKey]: { ...(prev[mainKey] || {}), [subKey]: processedValue } };
       }
-      return {
-        ...prev,
-        [mainKey]: processedValue
-      };
+      return { ...prev, [mainKey]: processedValue };
     });
-  }, []); // useCallback with empty dependency array is fine as setLocalSettings is stable.
+  }, []);
 
   const handleConfirmClose = useCallback(() => {
     if (localSettings) {
@@ -53,56 +80,17 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     onClose();
   }, [localSettings, onSettingsSave, onClose]);
 
-  // --- CONDITIONAL RENDERING ---
   if (!isOpen || !localSettings) {
     return null; 
   }
 
-  // --- JSX ---
   const backdropBaseClasses = "fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ease-in-out settings-backdrop-unique-class";
   const panelBaseClasses = "glass-panel w-[60vw] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 ease-in-out p-6 shadow-2xl text-white";
-
-  const SettingRow = ({ label, tooltipText, children }) => (
-    <div className="mb-5">
-      <div className="flex items-center mb-1">
-        <label className="block text-sm font-medium text-gray-200 mr-2">{label}</label>
-        {tooltipText && (
-          <div className="relative group">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.755 4 3.92C16 12.802 14.904 14 12.94 14c-.992 0-1.824-.402-2.438-1.038M12 17v.01" />
-            </svg>
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 text-xs text-white bg-gray-800 rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
-              {tooltipText}
-            </div>
-          </div>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-
-  const InputField = ({ label, value, onChange, type = "text", placeholder = "", min = undefined }) => (
-    <div>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <input
-        type={type}
-        min={min}
-        value={value || ''}
-        onChange={onChange}
-        className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-400"
-        placeholder={placeholder}
-      />
-    </div>
-  );
 
   return (
     <div
       className={`${backdropBaseClasses} ${showContent ? 'bg-black/30 backdrop-blur-sm opacity-100' : 'bg-black/0 backdrop-blur-none opacity-0'}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-            handleConfirmClose();
-        }
-      }}
+      onClick={handleConfirmClose}
     >
       <div
         ref={panelRef}
@@ -111,20 +99,16 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
       >
         <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
           <h3 className="text-xl font-semibold text-white">Settings</h3>
-          <button
-            onClick={handleConfirmClose}
-            className="text-gray-400 hover:text-white transition-colors text-2xl"
-          >
-            &times;
-          </button>
+          <button onClick={handleConfirmClose} className="text-gray-400 hover:text-white transition-colors text-2xl">&times;</button>
         </div>
 
         <SettingRow label="Connection Rate Limiting" tooltipText="The limit_conn module can limit the number of connections established by each IP at the same time.">
           <div className="grid md:grid-cols-2 gap-4">
             <InputField
-              label="Zone Size (e.g., 10m)"
+              label="Zone Size (must end with 'm')"
               value={localSettings.connectionRateLimit?.zoneSize}
               onChange={(e) => handleLocalChange('connectionRateLimit', 'zoneSize', e.target.value, 'text')}
+              pattern="^\d+m$"
             />
             <InputField
               label="Max Connections per IP"
@@ -139,14 +123,16 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
         <SettingRow label="Request Rate Limiting" tooltipText="The limit_req module can be used to limit the request rate to prevent some malicious users from making a large number of requests too quickly.">
           <div className="grid md:grid-cols-2 gap-4 mb-2">
             <InputField
-              label="Zone Size (e.g., 10m)"
+              label="Zone Size (must end with 'm')"
               value={localSettings.requestRateLimit?.zoneSize}
               onChange={(e) => handleLocalChange('requestRateLimit', 'zoneSize', e.target.value, 'text')}
+              pattern="^\d+m$"
             />
             <InputField
-              label="Rate (e.g., 5r/s)"
+              label="Rate (must end with 'r/s')"
               value={localSettings.requestRateLimit?.rate}
               onChange={(e) => handleLocalChange('requestRateLimit', 'rate', e.target.value, 'text')}
+              pattern="^\d+r/s$"
             />
             <InputField
               label="Burst"
@@ -179,9 +165,10 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
               onChange={(e) => handleLocalChange('requestTimeout', 'keepalive', e.target.value, 'number')}
             />
             <InputField
-              label="Client Max Body Size (e.g., 1m)"
+              label="Client Max Body Size (must end with 'm')"
               value={localSettings.requestTimeout?.maxBodySize}
               onChange={(e) => handleLocalChange('requestTimeout', 'maxBodySize', e.target.value, 'text')}
+              pattern="^\d+m$"
             />
             <InputField
               label="Client Body Timeout (s)"

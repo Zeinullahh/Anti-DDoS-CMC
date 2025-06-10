@@ -31,7 +31,7 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
 
     const userMessage = { id: Date.now(), text: input, sender: 'user' };
     setMessages(prev => [...prev, userMessage]);
-    const currentInput = input; // Capture input before clearing
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
@@ -41,7 +41,7 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: currentInput,
-          history: [...messages, userMessage], // Send updated history
+          history: [...messages, userMessage],
           currentSettings: currentGlobalSettings,
         }),
       });
@@ -60,67 +60,66 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
       }
 
       const chatData = await apiChatResponse.json();
-      let botResponseText = chatData.reply;
-      let actionApplied = false;
+      const botResponseText = chatData.reply;
+      let conversationalText = botResponseText;
+      
+      // --- FIX FOR JSON EXTRACTION ---
+      // Regex to find a JSON object within a string, potentially surrounded by text and markdown.
+      const jsonRegex = /```json\s*([\s\S]*?)\s*```|({[\s\S]*})/;
+      const match = botResponseText.match(jsonRegex);
 
-      try {
-        const structuredAction = JSON.parse(botResponseText);
-        if (structuredAction.action === 'apply_setting' && structuredAction.settingKey) {
-          const { settingKey, subKey, value, values } = structuredAction;
-          
-          const payloadForUpdateApi = { settingKey, subKey, value, values };
-          
-          console.log("Chatbot: Attempting to POST to /api/update-setting with payload:", payloadForUpdateApi);
-
-          const updateSettingResponse = await fetch('/api/update-setting', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payloadForUpdateApi),
-          });
-
-          if (!updateSettingResponse.ok) {
-            const updateErrorData = await updateSettingResponse.json();
-            botResponseText = `I tried to update the setting, but the server responded with an error: ${updateErrorData.message || 'Unknown error'}`;
-            console.error("Error from /api/update-setting:", updateErrorData);
-          } else {
-            const updateResult = await updateSettingResponse.json();
-            console.log("/api/update-setting response:", updateResult);
-
-            // If successful, update the main settings state in UIFrame
-            const newSettings = JSON.parse(JSON.stringify(currentGlobalSettings));
-            if (values && typeof values === 'object') {
-              if (!newSettings[settingKey]) newSettings[settingKey] = {};
-              Object.keys(values).forEach(sKey => {
-                newSettings[settingKey][sKey] = values[sKey];
-              });
-            } else if (value !== undefined) {
-              if (subKey) {
-                if (!newSettings[settingKey]) newSettings[settingKey] = {};
-                newSettings[settingKey][subKey] = value;
-              } else {
-                newSettings[settingKey] = value;
-              }
-            }
-            onSettingsSave(newSettings); // Update UIFrame state & localStorage
-            
-            // The AI's textual response might already be a confirmation.
-            // If Gemini's response was just the JSON, we might need a better confirmation message.
-            // For now, we assume Gemini's text response is suitable or can be enhanced.
-            // If botResponseText was *only* the JSON, we need to craft a user-facing message.
-            // Let's assume the prompt to Gemini asks it to confirm in natural language *then* provide JSON.
-            // If botResponseText IS the JSON, this will display the JSON. This needs refinement in prompt.
-            // For now, let's assume the text part of Gemini's response is good enough.
-            actionApplied = true;
-            console.log(`Chatbot successfully triggered setting update for: ${settingKey}`);
-          }
+      if (match) {
+        // Extract the JSON part (either from the markdown block or a standalone object)
+        const jsonString = match[1] || match[2];
+        // The conversational part is the text before the JSON block.
+        conversationalText = botResponseText.substring(0, match.index).trim();
+        if (conversationalText === "") {
+            conversationalText = "Okay, I've applied the setting."; // Default confirmation
         }
-      } catch (e) {
-        // This catch means botResponseText was not a parsable JSON for apply_setting
-        // So, it's treated as a regular conversational response.
-        // console.log("AI response was not a structured setting action, or error parsing it:", e);
-      }
 
-      const botMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
+        try {
+          const structuredAction = JSON.parse(jsonString);
+          if (structuredAction.action === 'apply_setting' && structuredAction.settingKey) {
+            const { settingKey, subKey, value, values } = structuredAction;
+            
+            const payloadForUpdateApi = { settingKey, subKey, value, values };
+            
+            console.log("Chatbot: Attempting to POST to /api/update-setting with payload:", payloadForUpdateApi);
+            const updateSettingResponse = await fetch('/api/update-setting', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payloadForUpdateApi),
+            });
+
+            if (!updateSettingResponse.ok) {
+              const updateErrorData = await updateSettingResponse.json();
+              conversationalText = `I tried to update the setting, but the server responded with an error: ${updateErrorData.message || 'Unknown error'}`;
+              console.error("Error from /api/update-setting:", updateErrorData);
+            } else {
+              const newSettings = JSON.parse(JSON.stringify(currentGlobalSettings));
+              if (values && typeof values === 'object') {
+                if (!newSettings[settingKey]) newSettings[settingKey] = {};
+                Object.keys(values).forEach(sKey => { newSettings[settingKey][sKey] = values[sKey]; });
+              } else if (value !== undefined) {
+                if (subKey) {
+                  if (!newSettings[settingKey]) newSettings[settingKey] = {};
+                  newSettings[settingKey][subKey] = value;
+                } else {
+                  newSettings[settingKey] = value;
+                }
+              }
+              onSettingsSave(newSettings);
+              console.log(`Chatbot successfully triggered setting update for: ${settingKey}`);
+            }
+          }
+        } catch (e) {
+          console.error("Chatbot: Failed to parse or process the extracted JSON.", e);
+          conversationalText = "I tried to process that, but the data format was incorrect.";
+        }
+      }
+      // --- END OF FIX ---
+
+      const botMessage = { id: Date.now() + 1, text: conversationalText, sender: 'bot' };
       setMessages(prev => [...prev, botMessage]);
 
     } catch (error) {
@@ -160,13 +159,7 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`
-                max-w-[75%] p-2.5 rounded-xl text-sm
-                ${msg.sender === 'user' 
-                  ? 'bg-black text-white rounded-br-none'
-                  : 'bg-black text-white rounded-bl-none'
-                }
-              `}
+              className={`max-w-[75%] p-2.5 rounded-xl text-sm ${msg.sender === 'user' ? 'bg-black text-white rounded-br-none' : 'bg-black text-white rounded-bl-none'}`}
             >
               {msg.text}
             </div>
