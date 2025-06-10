@@ -8,7 +8,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 let model;
 // Using a recent, generally available model. Update if you have access to a specific preview model.
-const modelName = "gemini-1.5-flash-latest"; 
+const modelName = "gemini-2.5-flash-preview-04-17"; 
 
 if (GEMINI_API_KEY) {
   try {
