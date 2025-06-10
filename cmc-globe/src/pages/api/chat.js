@@ -7,14 +7,14 @@ dotenv.config({ path: '../../.env.local' });
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
 
 let model;
-// Using a recent, generally available model. Update if you have access to a specific preview model.
-const modelName = "gemini-2.5-flash-preview-04-17"; 
+// Using a recent, generally available model. The user can update this if they have access to a specific preview model.
+const modelName = "gemini-1.5-flash-latest"; 
 
 if (GEMINI_API_KEY) {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const geminiGenerationConfig = {
-      temperature: 0.2, // Lower temperature for more predictable, structured output
+      temperature: 0.2,
       topP: 1,
       topK: 1,
       maxOutputTokens: 2048,
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Message and currentSettings are required' });
   }
 
-  let settingsContext = `You are a helpful assistant for configuring application settings.
+  let settingsContext = `You are an assistant helping a user configure application settings.
 Your primary goal is to identify if the user wants to change a setting, gather all necessary values, and then respond with a specific JSON object to apply the change.
 
 Here are the available settings you can modify:
@@ -64,10 +64,23 @@ INTERACTION FLOW:
 5. If the user is just chatting and not asking to change a setting, respond conversationally without any JSON.
 `;
 
-  const chatHistoryForPrompt = history.map(h => ({
+  let chatHistoryForPrompt = history.map(h => ({
     role: h.sender === 'user' ? 'user' : 'model',
     parts: [{ text: h.text }]
   }));
+
+  // --- FIX FOR THE ERROR ---
+  // Sanitize history: The Gemini API requires the history to start with a 'user' role.
+  // We find the first user message and slice the history from that point.
+  const firstUserIndex = chatHistoryForPrompt.findIndex(h => h.role === 'user');
+  if (firstUserIndex > 0) {
+    chatHistoryForPrompt = chatHistoryForPrompt.slice(firstUserIndex);
+  } else if (firstUserIndex === -1 && chatHistoryForPrompt.length > 0) {
+    // This case shouldn't happen if the frontend sends the user message in history,
+    // but as a safeguard, we clear history if it only contains model messages.
+    chatHistoryForPrompt = [];
+  }
+  // --- END OF FIX ---
 
   try {
     const chat = model.startChat({ history: chatHistoryForPrompt });
