@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-// Removed direct import of GoogleGenerativeAI
 
-// ChatPanel now receives currentGlobalSettings and onSettingsSave from UIFrame
 const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -9,8 +7,6 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
   const [showContent, setShowContent] = useState(false);
   const messagesEndRef = useRef(null);
   const panelRef = useRef(null);
-
-  // No direct AI model initialization here anymore
 
   useEffect(() => {
     if (isOpen) {
@@ -30,145 +26,106 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
     setInput(e.target.value);
   };
 
-  const parseAndApplySetting = (settingKey, subKey, valueStr) => {
-    let parsedValue = valueStr;
-    const settingGroup = currentGlobalSettings[settingKey];
-    let type = 'text'; // Default type
-
-    if (settingGroup && subKey && typeof settingGroup[subKey] === 'number') {
-      type = 'number';
-    } else if (settingGroup && subKey && typeof settingGroup[subKey] === 'boolean') {
-      type = 'checkbox';
-    } else if (typeof currentGlobalSettings[settingKey] === 'boolean' && !subKey) {
-       type = 'checkbox';
-    } else if (typeof currentGlobalSettings[settingKey] === 'number' && !subKey) {
-       type = 'number';
-    }
-
-
-    if (type === 'number') {
-      parsedValue = Number(valueStr);
-      if (isNaN(parsedValue)) {
-        return { success: false, error: `Invalid number format for ${valueStr}` };
-      }
-    } else if (type === 'checkbox') {
-      if (valueStr.toLowerCase() === 'true' || valueStr === '1' || valueStr.toLowerCase() === 'enable' || valueStr.toLowerCase() === 'enabled') {
-        parsedValue = true;
-      } else if (valueStr.toLowerCase() === 'false' || valueStr === '0' || valueStr.toLowerCase() === 'disable' || valueStr.toLowerCase() === 'disabled') {
-        parsedValue = false;
-      } else {
-        return { success: false, error: `Invalid boolean value: ${valueStr}. Use true/false.` };
-      }
-    }
-    
-    // Create a deep copy of current settings to modify
-    const newSettings = JSON.parse(JSON.stringify(currentGlobalSettings));
-
-    if (subKey) {
-        if (!newSettings[settingKey]) newSettings[settingKey] = {};
-        newSettings[settingKey][subKey] = parsedValue;
-    } else {
-        // Corrected: use settingKey for top-level properties
-        newSettings[settingKey] = parsedValue;
-    }
-    onSettingsSave(newSettings);
-    return { success: true, settingKey, subKey, parsedValue };
-  };
-
-
   const sendMessage = async () => {
     if (!input.trim()) return;
-    // Removed direct !model check, backend /api/chat handles initialization errors.
 
     const userMessage = { id: Date.now(), text: input, sender: 'user' };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input; // Capture input before clearing
     setInput('');
     setIsLoading(true);
 
     try {
-      const apiResponse = await fetch('/api/chat', {
+      const apiChatResponse = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input,
-          history: messages, // Send current chat history for context
-          currentSettings: currentGlobalSettings, // Send current settings for context
+          message: currentInput,
+          history: [...messages, userMessage], // Send updated history
+          currentSettings: currentGlobalSettings,
         }),
       });
 
-      if (!apiResponse.ok) {
-        let errorDetail = `API request failed with status ${apiResponse.status}`;
-        const responseText = await apiResponse.text(); // Read body as text ONCE
+      if (!apiChatResponse.ok) {
+        let errorDetail = `AI Chat API request failed with status ${apiChatResponse.status}`;
+        const responseText = await apiChatResponse.text();
         console.error("Raw error response from /api/chat:", responseText);
         try {
-            const errorData = JSON.parse(responseText); // Try to parse the text as JSON
-            errorDetail = errorData.error || errorDetail;
+          const errorData = JSON.parse(responseText);
+          errorDetail = errorData.error || errorDetail;
         } catch (e) {
-            // If parsing text as JSON fails, use the text itself (it might be HTML)
-            errorDetail = responseText || errorDetail;
+          errorDetail = responseText || errorDetail;
         }
         throw new Error(errorDetail);
       }
 
-      // If response is OK, proceed to parse as JSON
-      const data = await apiResponse.json();
-      let botResponseText = data.reply; // This is the text from Gemini
+      const chatData = await apiChatResponse.json();
+      let botResponseText = chatData.reply;
+      let actionApplied = false;
 
-      // Attempt to parse the response for a structured action
-      // The backend API was prompted to return JSON like:
-      // {"action": "apply_setting", "settingKey": "mainKey", "subKey": "optionalSubKey", "value": "newValue"}
-      // or {"action": "apply_setting", "settingKey": "mainKey", "values": {"subKey1": "val1", ...}}
       try {
         const structuredAction = JSON.parse(botResponseText);
         if (structuredAction.action === 'apply_setting' && structuredAction.settingKey) {
           const { settingKey, subKey, value, values } = structuredAction;
           
-          // Create a deep copy of current settings to modify
-          const newSettings = JSON.parse(JSON.stringify(currentGlobalSettings));
-          let changeApplied = false;
+          const payloadForUpdateApi = { settingKey, subKey, value, values };
+          
+          console.log("Chatbot: Attempting to POST to /api/update-setting with payload:", payloadForUpdateApi);
 
-          if (values && typeof values === 'object') { // For complex objects like requestRateLimit
-            if (!newSettings[settingKey]) newSettings[settingKey] = {};
-            Object.keys(values).forEach(sKey => {
-              newSettings[settingKey][sKey] = values[sKey];
-            });
-            changeApplied = true;
-          } else if (value !== undefined) { // For single value or top-level boolean
-            if (subKey) {
-              if (!newSettings[settingKey]) newSettings[settingKey] = {};
-              newSettings[settingKey][subKey] = value;
-            } else {
-              newSettings[settingKey] = value;
-            }
-            changeApplied = true;
-          }
+          const updateSettingResponse = await fetch('/api/update-setting', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadForUpdateApi),
+          });
 
-          if (changeApplied) {
-            onSettingsSave(newSettings); // Call the save function from UIFrame
-            // The bot's textual response might already be a confirmation.
-            // If not, or if we want a more generic one:
-            // botResponseText = `Okay, I've updated the settings for '${settingKey}'.`;
-            console.log(`Chatbot applied setting: ${settingKey}`, newSettings[settingKey]);
+          if (!updateSettingResponse.ok) {
+            const updateErrorData = await updateSettingResponse.json();
+            botResponseText = `I tried to update the setting, but the server responded with an error: ${updateErrorData.message || 'Unknown error'}`;
+            console.error("Error from /api/update-setting:", updateErrorData);
           } else {
-            // Gemini might have returned the JSON structure but with insufficient data
-            // Or it's a conversational response that happens to be valid JSON but not an action
-            // Keep botResponseText as is.
+            const updateResult = await updateSettingResponse.json();
+            console.log("/api/update-setting response:", updateResult);
+
+            // If successful, update the main settings state in UIFrame
+            const newSettings = JSON.parse(JSON.stringify(currentGlobalSettings));
+            if (values && typeof values === 'object') {
+              if (!newSettings[settingKey]) newSettings[settingKey] = {};
+              Object.keys(values).forEach(sKey => {
+                newSettings[settingKey][sKey] = values[sKey];
+              });
+            } else if (value !== undefined) {
+              if (subKey) {
+                if (!newSettings[settingKey]) newSettings[settingKey] = {};
+                newSettings[settingKey][subKey] = value;
+              } else {
+                newSettings[settingKey] = value;
+              }
+            }
+            onSettingsSave(newSettings); // Update UIFrame state & localStorage
+            
+            // The AI's textual response might already be a confirmation.
+            // If Gemini's response was just the JSON, we might need a better confirmation message.
+            // For now, we assume Gemini's text response is suitable or can be enhanced.
+            // If botResponseText was *only* the JSON, we need to craft a user-facing message.
+            // Let's assume the prompt to Gemini asks it to confirm in natural language *then* provide JSON.
+            // If botResponseText IS the JSON, this will display the JSON. This needs refinement in prompt.
+            // For now, let's assume the text part of Gemini's response is good enough.
+            actionApplied = true;
+            console.log(`Chatbot successfully triggered setting update for: ${settingKey}`);
           }
         }
-        // If parsing fails or it's not an apply_setting action, botResponseText remains Gemini's natural language reply.
       } catch (e) {
-        // Not a JSON for setting change, or malformed JSON. Treat as natural language response.
-        // console.log("Reply from AI was not a structured setting action:", e);
+        // This catch means botResponseText was not a parsable JSON for apply_setting
+        // So, it's treated as a regular conversational response.
+        // console.log("AI response was not a structured setting action, or error parsing it:", e);
       }
 
       const botMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
       setMessages(prev => [...prev, botMessage]);
 
     } catch (error) {
-      console.error("Error sending message via /api/chat:", error);
-      const errorMessageText = error.message || "Sorry, I couldn't connect to the AI. Please try again.";
+      console.error("Error in sendMessage:", error);
+      const errorMessageText = error.message || "Sorry, an error occurred.";
       const errorMessage = { id: Date.now() + 1, text: errorMessageText, sender: 'bot' };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -178,7 +135,6 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
 
   if (!isOpen) return null;
 
-  // Glassmorphism style for chat panel
   const panelBaseClasses = `
     fixed bottom-20 right-5 z-50 
     w-[360px] h-[520px] 
@@ -189,21 +145,17 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
     flex flex-col overflow-hidden
     transition-all duration-300 ease-in-out
   `;
-  // Note: The glassmorphism often relies on a background to blur.
-  // Ensure the parent container or body has some visual content.
 
   return (
     <div
       ref={panelRef}
       className={`${panelBaseClasses} ${showContent ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
     >
-      {/* Header */}
       <div className="p-3 border-b border-white/10 flex justify-between items-center">
         <h3 className="text-md font-semibold text-white">AI Settings Assistant</h3>
         <button onClick={onClose} className="text-gray-300 hover:text-white">&times;</button>
       </div>
 
-      {/* Messages Area */}
       <div className="flex-grow p-3 space-y-3 overflow-y-auto">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -211,8 +163,8 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
               className={`
                 max-w-[75%] p-2.5 rounded-xl text-sm
                 ${msg.sender === 'user' 
-                  ? 'bg-black text-white rounded-br-none' // User message: black bg, white text
-                  : 'bg-black text-white rounded-bl-none' // Bot message: black bg, white text
+                  ? 'bg-black text-white rounded-br-none'
+                  : 'bg-black text-white rounded-bl-none'
                 }
               `}
             >
@@ -223,7 +175,6 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
       <div className="p-3 border-t border-white/10">
         <div className="flex items-center space-x-2">
           <input
@@ -252,7 +203,6 @@ const ChatPanel = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) =
             )}
           </button>
         </div>
-        {/* Removed the dark-yellow warning message */}
       </div>
     </div>
   );

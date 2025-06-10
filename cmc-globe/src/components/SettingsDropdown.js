@@ -1,37 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-// Props are now currentGlobalSettings, onSettingsSave, isOpen, onClose
 const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSave }) => {
   const panelRef = useRef(null);
   const [showContent, setShowContent] = useState(false);
-  const [localSettings, setLocalSettings] = useState(null); // Initialize as null or undefined
+  const [localSettings, setLocalSettings] = useState(null);
 
-  // Effect to manage content visibility and initialize localSettings when modal opens
+  // --- HOOKS CALLED AT TOP LEVEL ---
   useEffect(() => {
     if (isOpen) {
-      // Initialize localSettings with a deep clone of global settings ONLY when opening
-      // This check ensures it only happens when localSettings hasn't been set for this open instance yet,
-      // or if you want to force re-init every time it opens (current behavior).
-      // To prevent re-init if already open and props change (which shouldn't happen with save-on-close):
-      // We can rely on the fact that this effect runs when isOpen becomes true.
       setLocalSettings(JSON.parse(JSON.stringify(currentGlobalSettings)));
-      
       const timer = setTimeout(() => setShowContent(true), 10);
       return () => clearTimeout(timer);
     } else {
       setShowContent(false);
-      // When closing, localSettings will be saved by handleConfirmClose.
-      // No need to reset localSettings here as it will be re-initialized on next open.
     }
-  }, [isOpen]); // Only depend on isOpen for this effect to control initialization timing
-
-  // If localSettings is not yet initialized (e.g. first render while isOpen is true),
-  // or if not open, don't render the form content.
-  if (!isOpen || !localSettings) {
-    // Render nothing or a loader if isOpen is true but localSettings is briefly null
-    // However, the useEffect above should set it quickly.
-    return null; 
-  }
+  }, [isOpen, currentGlobalSettings]); // currentGlobalSettings added back to ensure re-init if global changes while closed
 
   const handleLocalChange = useCallback((mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
@@ -42,11 +25,12 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     }
 
     setLocalSettings(prev => {
+      if (!prev) return null; // Should not happen if isOpen is true
       if (subKey) {
         return {
           ...prev,
           [mainKey]: {
-            ...(prev[mainKey] || {}), // Ensure mainKey object exists
+            ...(prev[mainKey] || {}),
             [subKey]: processedValue
           }
         };
@@ -56,18 +40,26 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
         [mainKey]: processedValue
       };
     });
-  }, [setLocalSettings]); // setLocalSettings is stable
+  }, []); // Removed setLocalSettings from dep array as it's stable, but ESLint might prefer it.
 
-  const handleConfirmClose = () => {
-    onSettingsSave(localSettings); // Save the accumulated local changes
-    onClose(); // Then close the modal
-  };
-  
+  const handleConfirmClose = useCallback(() => {
+    if (localSettings) { // Ensure localSettings is not null
+        onSettingsSave(localSettings);
+    }
+    onClose();
+  }, [localSettings, onSettingsSave, onClose]);
+
+  // --- CONDITIONAL RENDERING ---
+  // If not open or localSettings hasn't been initialized yet (can happen briefly)
+  if (!isOpen || !localSettings) {
+    return null; 
+  }
+
+  // --- JSX ---
   const backdropBaseClasses = "fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ease-in-out settings-backdrop-unique-class";
   const panelBaseClasses = "glass-panel w-[60vw] max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 ease-in-out p-6 shadow-2xl text-white";
 
-  // Helper component for each setting row
-  const SettingRow = ({ label, tooltipText, children, subLabel = null }) => (
+  const SettingRow = ({ label, tooltipText, children }) => (
     <div className="mb-5">
       <div className="flex items-center mb-1">
         <label className="block text-sm font-medium text-gray-200 mr-2">{label}</label>
@@ -82,19 +74,17 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
           </div>
         )}
       </div>
-      {subLabel && <p className="text-xs text-gray-400 mb-2">{subLabel}</p>}
       {children}
     </div>
   );
 
-  // Helper for individual input fields within a SettingRow if needed
   const InputField = ({ label, value, onChange, type = "text", placeholder = "", min = undefined }) => (
     <div>
       <label className="block text-xs text-gray-400 mb-1">{label}</label>
       <input
         type={type}
         min={min}
-        value={value || ''} // Ensure controlled component, handle undefined/null by showing empty string
+        value={value || ''}
         onChange={onChange}
         className="w-full p-2 bg-gray-800/50 border border-gray-700 rounded text-sm text-white focus:ring-purple-500 focus:border-purple-500 placeholder-gray-400"
         placeholder={placeholder}
@@ -102,13 +92,12 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     </div>
   );
 
-
   return (
     <div
       className={`${backdropBaseClasses} ${showContent ? 'bg-black/30 backdrop-blur-sm opacity-100' : 'bg-black/0 backdrop-blur-none opacity-0'}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-            handleConfirmClose(); // Save and close on backdrop click
+            handleConfirmClose();
         }
       }}
     >
@@ -120,14 +109,13 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
         <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
           <h3 className="text-xl font-semibold text-white">Settings</h3>
           <button
-            onClick={handleConfirmClose} // Save and close on "x" button click
+            onClick={handleConfirmClose}
             className="text-gray-400 hover:text-white transition-colors text-2xl"
           >
             &times;
           </button>
         </div>
 
-        {/* Inputs now bind to localSettings and use handleLocalChange */}
         <SettingRow label="Connection Rate Limiting" tooltipText="The limit_conn module can limit the number of connections established by each IP at the same time.">
           <div className="grid md:grid-cols-2 gap-4">
             <InputField
