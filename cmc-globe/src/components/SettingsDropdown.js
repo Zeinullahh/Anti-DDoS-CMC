@@ -8,13 +8,17 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
   // --- HOOKS CALLED AT TOP LEVEL ---
   useEffect(() => {
     if (isOpen) {
+      // Initialize localSettings with a deep clone of global settings ONLY when opening.
+      // This effect now ONLY depends on `isOpen`, so it will not re-run and reset
+      // the form while you are typing, even if the parent component re-renders.
       setLocalSettings(JSON.parse(JSON.stringify(currentGlobalSettings)));
+      
       const timer = setTimeout(() => setShowContent(true), 10);
       return () => clearTimeout(timer);
     } else {
       setShowContent(false);
     }
-  }, [isOpen, currentGlobalSettings]); // currentGlobalSettings added back to ensure re-init if global changes while closed
+  }, [isOpen]); // <<<< CORRECTED DEPENDENCY ARRAY
 
   const handleLocalChange = useCallback((mainKey, subKey, eventValue, type = 'text') => {
     let processedValue = eventValue;
@@ -25,7 +29,7 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
     }
 
     setLocalSettings(prev => {
-      if (!prev) return null; // Should not happen if isOpen is true
+      if (!prev) return null;
       if (subKey) {
         return {
           ...prev,
@@ -40,17 +44,16 @@ const SettingsDropdown = ({ isOpen, onClose, currentGlobalSettings, onSettingsSa
         [mainKey]: processedValue
       };
     });
-  }, []); // Removed setLocalSettings from dep array as it's stable, but ESLint might prefer it.
+  }, []); // useCallback with empty dependency array is fine as setLocalSettings is stable.
 
   const handleConfirmClose = useCallback(() => {
-    if (localSettings) { // Ensure localSettings is not null
+    if (localSettings) {
         onSettingsSave(localSettings);
     }
     onClose();
   }, [localSettings, onSettingsSave, onClose]);
 
   // --- CONDITIONAL RENDERING ---
-  // If not open or localSettings hasn't been initialized yet (can happen briefly)
   if (!isOpen || !localSettings) {
     return null; 
   }

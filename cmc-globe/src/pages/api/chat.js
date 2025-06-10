@@ -1,27 +1,23 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
-import { settingTemplates } from "../../utils/chatSettingsHelper"; // Adjust path as needed
+import { settingTemplates } from "../../utils/chatSettingsHelper";
 
-dotenv.config({ path: '../../.env.local' }); // Assuming .env.local is in cmc-globe directory
+dotenv.config({ path: '../../.env.local' });
 
-// Ensure the API key is loaded from environment variables on the server
-// The example used API_KEY, but your .env.local uses GEMINI_API_KEY. Sticking to GEMINI_API_KEY.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
 
-let genAI;
 let model;
-const modelName = "gemini-2.5-flash-preview-04-17"; // Using the model name you requested
+// Using a recent, generally available model. Update if you have access to a specific preview model.
+const modelName = "gemini-1.5-flash-latest"; 
 
 if (GEMINI_API_KEY) {
   try {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // Using the model name you requested
-    // Adding generationConfig similar to the example, though it can also be passed to startChat/sendMessage
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const geminiGenerationConfig = {
-      temperature: 0.7, // Adjusted from 0.9 for potentially more factual settings responses
+      temperature: 0.2, // Lower temperature for more predictable, structured output
       topP: 1,
-      topK: 1, // Default is often higher, 1 means only the top token is considered
-      maxOutputTokens: 2048, // Adjusted from 4096, ensure it's appropriate
+      topK: 1,
+      maxOutputTokens: 2048,
     };
     model = genAI.getGenerativeModel({ model: modelName, generationConfig: geminiGenerationConfig }); 
     console.log(`Initialized Gemini model: ${modelName}`);
@@ -29,7 +25,7 @@ if (GEMINI_API_KEY) {
     console.error(`Failed to initialize GoogleGenerativeAI in API route with model ${modelName}:`, error);
   }
 } else {
-  console.warn("GEMINI_API_KEY environment variable is not set (checked via process.env). Chat API will not function.");
+  console.warn("GEMINI_API_KEY environment variable is not set. Chat API will not function.");
 }
 
 export default async function handler(req, res) {
@@ -44,65 +40,47 @@ export default async function handler(req, res) {
 
   const { message, history = [], currentSettings } = req.body;
 
-  if (!message) {
-    return res.status(400).json({ error: 'Message is required' });
-  }
-  if (!currentSettings) {
-    return res.status(400).json({ error: 'Current settings are required for context' });
+  if (!message || !currentSettings) {
+    return res.status(400).json({ error: 'Message and currentSettings are required' });
   }
 
-  // Construct a detailed context for Gemini
-  let settingsContext = "You are an assistant helping a user configure application settings. Here are the available settings and their current values. Your goal is to understand if the user wants to change any of these settings. If they do, identify which setting and guide them to provide the necessary values based on the descriptions. Do not make up settings.\n\n";
-  
-  settingsContext += "Current Application Settings Values:\n";
-  settingsContext += `${JSON.stringify(currentSettings, null, 2)}\n\n`;
+  let settingsContext = `You are a helpful assistant for configuring application settings.
+Your primary goal is to identify if the user wants to change a setting, gather all necessary values, and then respond with a specific JSON object to apply the change.
 
-  settingsContext += "Available settings descriptions that you can help modify:\n";
-  settingTemplates.forEach(template => {
-    settingsContext += `- ${template.description}\n`; // Key for AI to understand what it can do
-  });
-  
-  settingsContext += `\nBased on this, and the user's query, determine if they want to modify a setting.
-If they want to modify a setting, identify which one (e.g., by its description or common terms like 'connection rate limit').
-Then, ask clarifying questions to get all necessary parameters for that setting as defined in its description.
-For example, if they say 'I want to change connection limits', you might respond: 'Okay, I can help with connection rate limiting. What would you like to set the zone size to (e.g., "10m") and what is the maximum number of connections per IP (e.g., 10)?'
-If the user's query is not about changing one of these settings, respond conversationally.
-If the user provides new values for a setting, confirm the change. For example: 'Okay, I will set connection rate limit zone size to 20m and max connections to 15.'
-Then, output a structured JSON object for the frontend to parse if a setting change is confirmed and all values are gathered.
-The JSON should be like: {"action": "apply_setting", "settingKey": "mainSettingKey", "subKey": "optionalSubKey", "value": "newValue"} or for complex objects: {"action": "apply_setting", "settingKey": "mainSettingKey", "values": {"subKey1": "val1", "subKey2": "val2"}}
-For boolean toggles, if user says 'enable cache', respond with JSON: {"action": "apply_setting", "settingKey": "cacheOptimizationEnabled", "value": true}
-If just asking questions or general chat, do not output the JSON structure.
+Here are the available settings you can modify:
+${settingTemplates.map(t => `- ${t.description}`).join('\n')}
+
+Here are the current values:
+${JSON.stringify(currentSettings, null, 2)}
+
+INTERACTION FLOW:
+1. If the user's request is unclear or missing values (e.g., they say "change timeouts" but not which one or to what value), ask clarifying questions based on the setting description.
+2. If the user provides all necessary values to change a setting, respond with a conversational confirmation (e.g., "Okay, I will update the request timeout settings.") followed by the required JSON object on a new line.
+3. **IMPORTANT RULE:** If you are applying a setting, your response MUST contain the JSON object. The JSON object should be the LAST part of your response.
+4. The JSON format MUST be one of the following:
+   - For single values: {"action": "apply_setting", "settingKey": "key", "subKey": "subKey", "value": "newValue"}
+   - For multiple values in a group: {"action": "apply_setting", "settingKey": "key", "values": {"subKey1": "val1", "subKey2": "val2"}}
+   - For simple toggles: {"action": "apply_setting", "settingKey": "key", "value": true}
+5. If the user is just chatting and not asking to change a setting, respond conversationally without any JSON.
 `;
 
-  // Simple history formatting (can be more sophisticated)
   const chatHistoryForPrompt = history.map(h => ({
     role: h.sender === 'user' ? 'user' : 'model',
     parts: [{ text: h.text }]
   }));
 
   try {
-    // The example uses generateContent directly, not startChat. Let's align for simplicity.
-    // const chat = model.startChat({
-    //     history: chatHistoryForPrompt, // History might need different format for generateContent
-    // });
-
-    const fullPrompt = `${settingsContext}\n\nUser's current message: "${message}"\n\nChat History:\n${chatHistoryForPrompt.map(h => `${h.role}: ${h.parts[0].text}`).join('\n')}`;
+    const chat = model.startChat({ history: chatHistoryForPrompt });
+    const fullPrompt = `${settingsContext}\n\nUser's current message: "${message}"`;
     
-    // For debugging, log the prompt being sent to Gemini
-    // console.log("Full prompt to Gemini:", fullPrompt); 
-
-    // Using generateContent as per the example structure
-    const result = await model.generateContent(fullPrompt);
+    const result = await chat.sendMessage(fullPrompt);
     const response = await result.response;
     const text = response.text();
-
-    // For debugging, log the raw response text from Gemini
-    // console.log("Gemini response text:", text); 
+    
     res.status(200).json({ reply: text });
 
   } catch (error) {
-    console.error('Error calling Gemini API:', error.message); // Log the error message
-    // console.error('Full Gemini API error object:', error); // Optionally log the full error object
+    console.error('Error calling Gemini API:', error.message);
     res.status(500).json({ error: 'Failed to get response from AI. Check server logs for details.' });
   }
 }
